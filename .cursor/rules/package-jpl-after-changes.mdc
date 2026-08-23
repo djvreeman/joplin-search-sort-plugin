@@ -5,12 +5,12 @@ alwaysApply: true
 
 # Package .jpl after changes
 
-The user installs this plugin in Joplin from `publish/com.dvreeman.searchsort.jpl`, not only via `dist/`.
+The user installs this plugin in Joplin from `publish/com.danielvreeman.searchsort.jpl`, not only via `dist/`.
 
 After any change that affects the built plugin (source under `src/`, build scripts, webpack config, manifest, etc.):
 
 1. Run `npm run package` (builds and writes the `.jpl`).
-2. Confirm `publish/com.dvreeman.searchsort.jpl` has an updated mtime.
+2. Confirm `publish/com.danielvreeman.searchsort.jpl` has an updated mtime.
 3. Tell the user the `.jpl` is ready to reinstall in Joplin.
 
 Do not stop at `npm run build` alone unless the user only asked for a compile check.

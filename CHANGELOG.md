@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Plugin ID renamed to `com.danielvreeman.searchsort` (uninstall the old `com.dvreeman.searchsort` install if present)
+
 ### Added
 
 - Up/Down arrow keys navigate the selected note in the panel result list (after clicking a result row)
