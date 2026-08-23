@@ -1,11 +1,11 @@
 {
 	"manifest_version": 1,
-	"id": "com.dvreeman.searchsort",
+	"id": "com.danielvreeman.searchsort",
 	"app_min_version": "3.0",
 	"version": "0.1.3",
 	"name": "Advanced Search Sort",
 	"description": "Search notes and sort results by metadata columns.",
-	"author": "dvreeman",
+	"author": "Daniel Vreeman",
 	"homepage_url": "https://github.com/djvreeman/joplin-search-sort-plugin",
 	"repository_url": "https://github.com/djvreeman/joplin-search-sort-plugin",
 	"platforms": [
