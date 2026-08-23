@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist-tests"
+  },
+  "include": [
+    "src/__tests__/**/*.ts",
+    "src/searchSortService.ts",
+    "src/panelBootstrap.ts",
+    "src/searchQuery.ts",
+    "src/listNavigation.ts"
+  ]
+}

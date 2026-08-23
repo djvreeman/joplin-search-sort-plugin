@@ -1,0 +1,40 @@
+{
+  "name": "joplin-plugin-search-sort",
+  "version": "0.1.3",
+  "description": "Advanced searchable and sortable note results for Joplin",
+  "author": "dvreeman",
+  "license": "Apache-2.0",
+  "keywords": [
+    "joplin-plugin",
+    "search",
+    "sort"
+  ],
+  "homepage": "https://github.com/djvreeman/joplin-search-sort-plugin",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/djvreeman/joplin-search-sort-plugin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/djvreeman/joplin-search-sort-plugin/issues"
+  },
+  "scripts": {
+    "build": "node scripts/build.js",
+    "package": "node scripts/build.js && node scripts/package.js",
+    "dist": "npm run package",
+    "updateVersion": "node scripts/bump-version.js",
+    "prepublishOnly": "npm run package",
+    "test": "node --test \"dist-tests/**/*.test.js\"",
+    "build:test": "tsc -p tsconfig.test.json"
+  },
+  "files": [
+    "publish"
+  ],
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "copy-webpack-plugin": "^13.0.0",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.8.3",
+    "webpack": "^5.99.9",
+    "webpack-cli": "^6.0.1"
+  }
+}

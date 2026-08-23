@@ -1,0 +1,62 @@
+# Release notes
+
+All notable changes to **Advanced Search Sort** are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project uses [Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+### Changed
+
+- When a note is moved out of the scoped notebook, the next selected note follows the **panel’s current sort order** (title, updated, etc.), not Joplin’s default note-list sort
+
+### Planned
+
+- Publish to the Joplin plugin repository (npm) for in-app **Update**
+- Create public GitHub repository under `djvreeman`
+
+## [0.1.3] - 2026-08-23
+
+### Fixed
+
+- Inbox-processing workflow: when the selected note is moved to another notebook, it is removed from the scoped list immediately and work continues on the next note (aligned with Joplin’s core note-list behavior)
+- Stale production packaging of `ui/panel.js` (build now force-copies panel assets from `src/ui`)
+
+### Changed
+
+- Selection / note-meta reconciliation via data API instead of relying only on `onNoteChange` (which does not fire for notes after they leave selection)
+
+## [0.1.2] - 2026-08-22
+
+### Added
+
+- Debounced listing refresh on note change and sync complete
+- Refresh after creating a new note from the panel
+
+### Fixed
+
+- Attempted live updates when notes change (superseded by 0.1.3 for notebook moves)
+
+## [0.1.1] - 2026-08-22
+
+### Fixed
+
+- Blank column headers and note titles on fresh installs (empty `panelColumns` no longer left columns uninitialized)
+- Layout CSS fallbacks and flex sizing for the results pane
+
+## [0.1.0] - 2026-08-22
+
+### Added
+
+- Advanced Search Sort panel with searchable, sortable columns
+- Column drag-reorder and resize with persistence
+- Notebook scoping via Joplin `notebook:` filter and **All notebooks** control
+- Preserve last query and sort setting
+- Production `.jpl` packaging
+
+[Unreleased]: https://github.com/djvreeman/joplin-search-sort-plugin/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.1.3
+[0.1.2]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.1.2
+[0.1.1]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.1.1
+[0.1.0]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.1.0
