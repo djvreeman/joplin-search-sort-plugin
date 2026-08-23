@@ -344,8 +344,13 @@ body {
   background-color: var(--joplin-background-color-hover3);
 }
 
-.note-list-item-wrapper > .row.-selected:hover {
+.note-list-item-wrapper > .row.-selected:hover,
+.note-list-item-wrapper > .row.-selected:focus-visible {
   background-color: var(--joplin-selected-color);
+}
+
+.note-list-item-wrapper > .row:focus {
+  outline: none;
 }
 
 .cell {
