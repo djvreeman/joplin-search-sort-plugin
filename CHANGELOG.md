@@ -7,6 +7,17 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Up/Down arrow keys navigate the selected note in the panel result list (after clicking a result row)
+
+### Fixed
+
+- Auto-advance to the next note only when the current note is moved out of the scoped notebook (or deleted) — not on title, tag, or other in-place edits
+- Notebook switching no longer stalls on stale large-folder searches overwriting the newer scope
+- Removed per-poll move-reconcile (was slowing the panel and racing folder changes)
+- Live panel columns (Title, Updated, Created, Notebook) refresh when note metadata changes, without changing selection
+
 ### Changed
 
 - When a note is moved out of the scoped notebook, the next selected note follows the **panel’s current sort order** (title, updated, etc.), not Joplin’s default note-list sort
@@ -14,7 +25,6 @@ and this project uses [Semantic Versioning](https://semver.org/).
 ### Planned
 
 - Publish to the Joplin plugin repository (npm) for in-app **Update**
-- Create public GitHub repository under `djvreeman`
 
 ## [0.1.3] - 2026-08-23
 

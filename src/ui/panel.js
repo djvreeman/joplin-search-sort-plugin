@@ -249,36 +249,106 @@
     }
   }
 
-  function noteStillInScope(meta) {
-    if (!meta) return false;
-    if (!state.notebookScope || state.searchAllNotebooks) return true;
-    return meta.parentId === state.notebookScope.id;
+  // Keep in sync with listNavigation.ts (panel.js is not bundled with that module).
+  const NOTE_EVENT_CREATE = 1;
+  const NOTE_EVENT_DELETE = 3;
+
+  function decideNoteListingMembership(meta, eventType) {
+    if (!meta) {
+      return eventType === NOTE_EVENT_DELETE ? 'deleted' : 'inconclusive';
+    }
+    if (state.searchAllNotebooks || !state.notebookScope) return 'stay';
+    if (meta.parentId !== state.notebookScope.id) return 'left_scope';
+    return 'stay';
   }
 
-  function updateRowFromMeta(meta) {
-    if (!meta) return;
-    const row = state.rows.find(r => r.id === meta.id);
-    if (!row) return;
+  function columnMetaChanged(row, meta) {
+    return row.title !== meta.title
+      || row.updatedTime !== meta.updatedTime
+      || row.createdTime !== meta.createdTime
+      || row.notebookId !== meta.parentId
+      || (meta.notebookTitle && row.notebookTitle !== meta.notebookTitle);
+  }
+
+  function applyColumnMetaToRow(row, meta) {
     row.title = meta.title;
     row.updatedTime = meta.updatedTime;
     row.createdTime = meta.createdTime;
     row.notebookId = meta.parentId;
+    if (meta.notebookTitle) row.notebookTitle = meta.notebookTitle;
+  }
+
+  function sortFieldAffectedByMeta(before, meta) {
+    if (state.sortField === 'title') return before.title !== meta.title;
+    if (state.sortField === 'updated') return before.updatedTime !== meta.updatedTime;
+    if (state.sortField === 'created') return before.createdTime !== meta.createdTime;
+    if (state.sortField === 'notebook') {
+      return before.notebookId !== meta.parentId
+        || (meta.notebookTitle && before.notebookTitle !== meta.notebookTitle);
+    }
+    return false;
+  }
+
+  function patchRowDom(row) {
+    const wrapper = resultsBody.querySelector(`.note-list-item-wrapper[data-id="${row.id}"]`);
+    if (!wrapper) return false;
+    const rowEl = wrapper.querySelector('.row');
+    if (!rowEl) return false;
+    const cells = rowEl.querySelectorAll(':scope > .cell');
+    state.columns.forEach((col, index) => {
+      if (col.field === 'relevance') return;
+      const inner = cells[index]?.querySelector('.cell-inner');
+      if (inner) inner.textContent = cellValue(row, col.field);
+    });
+    return true;
   }
 
   /**
-   * Splice the note out and continue on the next row in the panel's current
-   * sort order (not Joplin's default note-list sort).
+   * Refresh Title / Updated / Created / Notebook cells for a listed note.
+   * Does not change selection. Re-sorts only when the active sort column changed.
+   */
+  function updateListedNoteColumns(meta) {
+    if (!meta) return false;
+    const row = state.rows.find(r => r.id === meta.id);
+    if (!row) return false;
+    if (!columnMetaChanged(row, meta)) return false;
+
+    const before = {
+      title: row.title,
+      updatedTime: row.updatedTime,
+      createdTime: row.createdTime,
+      notebookId: row.notebookId,
+      notebookTitle: row.notebookTitle,
+    };
+    const needsResort = sortFieldAffectedByMeta(before, meta);
+    applyColumnMetaToRow(row, meta);
+
+    if (needsResort) {
+      const scrollTop = resultsBody.scrollTop;
+      state.rows = sortRowsLocal(state.rows, state.sortField, state.sortDirection);
+      renderRows();
+      resultsBody.scrollTop = scrollTop;
+    } else if (!patchRowDom(row)) {
+      renderRows();
+    }
+    return true;
+  }
+
+  /**
+   * Splice the note out and optionally continue on the next row in the panel's
+   * current sort order (not Joplin's default note-list sort).
    */
   function removeNoteFromListing(noteId, options) {
     const opts = options || {};
     const idx = state.rows.findIndex(r => r.id === noteId);
-    if (idx < 0) return false;
+    if (idx < 0) {
+      if (opts.advanceSelection && state.selectedNoteId === noteId) {
+        state.selectedNoteId = null;
+      }
+      return false;
+    }
 
-    const shouldAdvance =
-      opts.advanceSelection
-      || state.selectedNoteId === noteId
-      || opts.wasSelected;
-
+    const shouldAdvance = !!opts.advanceSelection;
     state.rows.splice(idx, 1);
 
     if (shouldAdvance) {
@@ -289,6 +359,8 @@
       if (nextId) {
         webviewApi.postMessage({ type: 'openNote', payload: { noteId: nextId } });
       }
+    } else if (state.selectedNoteId === noteId) {
+      state.selectedNoteId = null;
     }
 
     renderRows();
@@ -296,68 +368,102 @@
     return true;
   }
 
+  /**
+   * Only remove/advance when the note left the scoped notebook or was deleted.
+   * In-scope edits update column cells and keep selection.
+   * Failed meta reads are inconclusive — never treat them as a notebook move.
+   */
   async function reconcileNotePresence(noteId, options) {
     const opts = options || {};
-    if (!noteId) return;
-    const inList = state.rows.some(r => r.id === noteId);
-    const scoped = !!state.notebookScope && !state.searchAllNotebooks;
+    if (!noteId) return 'inconclusive';
 
-    // Only need membership checks for notes we show, or the selected note under a folder scope.
-    if (!inList && !scoped && !opts.wasSelected) return;
+    const inList = state.rows.some(r => r.id === noteId);
+    if (!inList && !opts.wasSelected && !opts.checkEvenIfMissing) return 'stay';
 
     const meta = await fetchNoteMeta(noteId);
-    if (!meta || !noteStillInScope(meta)) {
+    const decision = decideNoteListingMembership(meta, opts.eventType ?? null);
+
+    if (decision === 'left_scope' || decision === 'deleted') {
       removeNoteFromListing(noteId, {
-        wasSelected: !!opts.wasSelected,
-        advanceSelection: !!opts.advanceSelection || !!opts.wasSelected,
+        advanceSelection: !!opts.advanceSelection,
       });
+      return decision;
+    }
+
+    if (decision === 'stay' && meta) {
+      updateListedNoteColumns(meta);
+    }
+
+    return decision;
+  }
+
+  /** Display-only sync for the selected listed note (no selection changes). */
+  async function syncSelectedNoteColumns() {
+    const noteId = state.selectedNoteId;
+    if (!noteId) return;
+    if (!state.rows.some(r => r.id === noteId)) return;
+
+    const meta = await fetchNoteMeta(noteId);
+    if (!meta) return;
+
+    // Notebook moves are handled by noteChanged / selectionChanged — not here.
+    if (
+      state.notebookScope
+      && !state.searchAllNotebooks
+      && meta.parentId !== state.notebookScope.id
+    ) {
       return;
     }
 
-    if (inList) {
-      updateRowFromMeta(meta);
-      renderRows();
-    }
+    updateListedNoteColumns(meta);
   }
 
   async function handleSelectionChanged(newNoteId) {
     const previousId = state.selectedNoteId;
+    const listHadFocus = resultsBody.contains(document.activeElement);
 
-    // Joplin may already have selected its own "next" note (default list sort).
-    // If the previous note left our scoped notebook, advance using OUR sorted rows.
+    // Joplin often selects its own "next" note after a notebook move.
+    // Only override when the previous note was in OUR listing and left the
+    // scoped notebook — not when the user simply switches notebooks/notes.
     if (previousId && previousId !== newNoteId) {
-      const meta = await fetchNoteMeta(previousId);
-      if (!meta || !noteStillInScope(meta)) {
-        removeNoteFromListing(previousId, { wasSelected: true, advanceSelection: true });
-        return;
+      const wasInListing = state.rows.some(r => r.id === previousId);
+      if (wasInListing) {
+        const meta = await fetchNoteMeta(previousId);
+        const decision = decideNoteListingMembership(meta, null);
+        if (decision === 'left_scope' || decision === 'deleted') {
+          removeNoteFromListing(previousId, { advanceSelection: true });
+          return;
+        }
       }
     }
 
     state.selectedNoteId = newNoteId || null;
-
-    if (newNoteId) {
-      await reconcileNotePresence(newNoteId, {});
-    }
-
     renderRows();
+    if (listHadFocus) {
+      scrollSelectedIntoView();
+      focusSelectedRow();
+    }
   }
 
   async function handleNoteChanged(payload) {
     const noteId = payload?.noteId;
+    const eventType = payload?.eventType ?? null;
 
     // Create: refresh so new notes appear when in scope.
-    if (payload?.eventType === 1) {
+    if (eventType === NOTE_EVENT_CREATE) {
       scheduleListingRefresh(150);
       return;
     }
 
-    // Update/Delete: if the changed note left scope (or was deleted), remove it.
-    // Only advance selection when that note was the one we had open.
+    // Updates: refresh Title/Updated/Created/Notebook in place.
+    // Advance selection ONLY when parent notebook left the current scope (or delete).
     if (noteId) {
       const wasSelected = state.selectedNoteId === noteId;
       await reconcileNotePresence(noteId, {
         wasSelected,
         advanceSelection: wasSelected,
+        eventType,
+        checkEvenIfMissing: wasSelected,
       });
       return;
     }
@@ -470,8 +576,14 @@
       const rowEl = document.createElement('div');
       rowEl.className = 'row grid-row';
       rowEl.style.gridTemplateColumns = template;
-      if (state.selectedNoteId && row.id === state.selectedNoteId) {
+      rowEl.setAttribute('role', 'option');
+      const isSelected = !!(state.selectedNoteId && row.id === state.selectedNoteId);
+      rowEl.tabIndex = isSelected ? 0 : -1;
+      if (isSelected) {
         rowEl.classList.add('-selected');
+        rowEl.setAttribute('aria-selected', 'true');
+      } else {
+        rowEl.setAttribute('aria-selected', 'false');
       }
 
       rowEl.innerHTML = state.columns.map(col => {
@@ -481,14 +593,60 @@
       }).join('');
 
       rowEl.addEventListener('click', () => {
-        state.selectedNoteId = row.id;
-        renderRows();
-        webviewApi.postMessage({ type: 'openNote', payload: { noteId: row.id } });
+        openListedNote(row.id, { focusRow: true });
       });
 
       wrapper.appendChild(rowEl);
       resultsBody.appendChild(wrapper);
     }
+  }
+
+  // Keep in sync with listNavigation.noteIdAtOffset (panel.js is not bundled with that module).
+  function noteIdAtOffset(rows, currentId, delta) {
+    if (!rows.length || !delta) return currentId;
+    let index = currentId ? rows.findIndex(r => r.id === currentId) : -1;
+    if (index < 0) {
+      return rows[delta > 0 ? 0 : rows.length - 1].id;
+    }
+    const nextIndex = Math.max(0, Math.min(rows.length - 1, index + delta));
+    return rows[nextIndex].id;
+  }
+
+  function focusSelectedRow() {
+    if (!state.selectedNoteId) return;
+    const wrapper = resultsBody.querySelector(
+      `.note-list-item-wrapper[data-id="${state.selectedNoteId}"]`,
+    );
+    const rowEl = wrapper?.querySelector('.row');
+    if (!rowEl) return;
+    rowEl.focus({ preventScroll: true });
+  }
+
+  function scrollSelectedIntoView() {
+    if (!state.selectedNoteId) return;
+    const wrapper = resultsBody.querySelector(
+      `.note-list-item-wrapper[data-id="${state.selectedNoteId}"]`,
+    );
+    wrapper?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function openListedNote(noteId, options) {
+    const opts = options || {};
+    if (!noteId) return;
+    state.selectedNoteId = noteId;
+    renderRows();
+    scrollSelectedIntoView();
+    if (opts.focusRow) focusSelectedRow();
+    webviewApi.postMessage({ type: 'openNote', payload: { noteId } });
+  }
+
+  function navigateListedNote(delta) {
+    const nextId = noteIdAtOffset(state.rows, state.selectedNoteId, delta);
+    if (!nextId || nextId === state.selectedNoteId) {
+      focusSelectedRow();
+      return;
+    }
+    openListedNote(nextId, { focusRow: true });
   }
 
   function applySearchResults(payload) {
@@ -511,6 +669,8 @@
     return !!state.textQuery.trim() || (!!state.notebookScope && !state.searchAllNotebooks);
   }
 
+  let searchGeneration = 0;
+
   async function runSearch() {
     state.textQuery = queryInput.value.trim();
 
@@ -522,6 +682,11 @@
       return;
     }
 
+    const generation = ++searchGeneration;
+    const requestedScopeId = state.notebookScope?.id || null;
+    const requestedAll = !!state.searchAllNotebooks;
+    const requestedQuery = state.textQuery;
+
     updateStatus('Searching...');
 
     try {
@@ -529,6 +694,12 @@
         type: 'runSearch',
         payload: uiStatePayload(),
       });
+
+      // Ignore stale responses from a previous notebook/query (large folders race).
+      if (generation !== searchGeneration) return;
+      if ((state.notebookScope?.id || null) !== requestedScopeId) return;
+      if (!!state.searchAllNotebooks !== requestedAll) return;
+      if (state.textQuery !== requestedQuery) return;
 
       if (response?.type === 'searchResults') {
         applySearchResults(response.payload);
@@ -542,6 +713,7 @@
 
       updateStatus('Search failed: no response from plugin.');
     } catch (error) {
+      if (generation !== searchGeneration) return;
       updateStatus(`Search failed: ${error?.message || String(error)}`);
     }
   }
@@ -695,35 +867,39 @@
     }, delayMs);
   }
 
+  let pollInFlight = false;
+
   async function pollSidebarFolder() {
+    if (pollInFlight) return;
+    pollInFlight = true;
     try {
       const response = await webviewApi.postMessage({ type: 'getFolderContext' });
       const folder = response?.payload;
       if (!folder) return;
 
-      // Catch selection changes if postMessage events were dropped.
+      // Folder changes first. Do not run move-reconcile here — that was firing
+      // getNoteMeta every poll and racing notebook switches on large folders.
+      if (folder.folderId && folder.folderId !== state.lastPolledFolderId) {
+        state.lastPolledFolderId = folder.folderId;
+        if (folder.selectedNoteId) {
+          state.selectedNoteId = folder.selectedNoteId;
+        }
+        setNotebookScope(folder.folderId, folder.folderTitle);
+        return;
+      }
+
       const polledSelected = folder.selectedNoteId || null;
       if (polledSelected !== state.selectedNoteId) {
         await handleSelectionChanged(polledSelected);
-      } else if (
-        state.notebookScope
-        && !state.searchAllNotebooks
-        && state.selectedNoteId
-      ) {
-        // Safety net for notebook moves when selection has not changed yet.
-        await reconcileNotePresence(state.selectedNoteId, {
-          wasSelected: true,
-          advanceSelection: true,
-        });
+      } else {
+        // Keep Title/Updated/Created/Notebook cells in sync while editing.
+        // Display-only — never advances selection.
+        await syncSelectedNoteColumns();
       }
-
-      if (!folder.folderId) return;
-      if (folder.folderId === state.lastPolledFolderId) return;
-
-      state.lastPolledFolderId = folder.folderId;
-      setNotebookScope(folder.folderId, folder.folderTitle);
     } catch {
       // ignore polling errors
+    } finally {
+      pollInFlight = false;
     }
   }
 
@@ -790,6 +966,8 @@
   newNoteBtn = document.getElementById('newNoteBtn');
   statusLine = document.getElementById('statusLine');
   resultsBody = document.getElementById('resultsBody');
+  resultsBody.setAttribute('role', 'listbox');
+  resultsBody.setAttribute('aria-label', 'Search results');
   headerRow = document.getElementById('headerRow');
   allNotebooksBtn = document.getElementById('allNotebooksBtn');
   scopeNotebookChip = document.getElementById('scopeNotebookChip');
@@ -830,6 +1008,25 @@
     if (e.key === 'Escape' && queryInput.value.length > 0) {
       clearSearch();
     }
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+
+    const target = e.target;
+    if (
+      target === queryInput
+      || (target && typeof target.closest === 'function' && target.closest('input, textarea, select'))
+    ) {
+      return;
+    }
+
+    if (!state.rows.length) return;
+    if (!state.selectedNoteId || !state.rows.some(r => r.id === state.selectedNoteId)) return;
+
+    e.preventDefault();
+    navigateListedNote(e.key === 'ArrowDown' ? 1 : -1);
   });
 
   void loadInitialState().then(() => {

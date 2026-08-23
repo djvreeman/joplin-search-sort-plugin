@@ -193,11 +193,25 @@ joplin.plugins.register({
 						fields: ['id', 'parent_id', 'title', 'updated_time', 'created_time'],
 					});
 					if (!note?.id) return { type: 'noteMeta', payload: null };
+
+					let notebookTitle = '';
+					if (note.parent_id) {
+						try {
+							const folder = await joplin.data.get(['folders', note.parent_id], {
+								fields: ['id', 'title'],
+							});
+							notebookTitle = folder?.title || '(Untitled notebook)';
+						} catch {
+							notebookTitle = '(Unknown notebook)';
+						}
+					}
+
 					return {
 						type: 'noteMeta',
 						payload: {
 							id: note.id,
 							parentId: note.parent_id || '',
+							notebookTitle,
 							title: note.title || '(Untitled)',
 							updatedTime: note.updated_time || 0,
 							createdTime: note.created_time || 0,
