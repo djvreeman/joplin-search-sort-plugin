@@ -7,13 +7,23 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed
+### Planned
 
-- Plugin ID renamed to `com.danielvreeman.searchsort` (uninstall the old `com.dvreeman.searchsort` install if present)
+- Publish to the Joplin plugin repository (npm) for in-app **Update**
+
+## [0.2.0] - 2026-08-27
 
 ### Added
 
+- Right-click context menu on panel result rows with the same core actions as Joplin's default note list (tags, move, duplicate, delete, export PDF, etc.)
+- **⌘T** / **Ctrl+T** opens Tags and **⌘M** / **Ctrl+M** opens Move to notebook when the panel has focus and a note is selected
 - Up/Down arrow keys navigate the selected note in the panel result list (after clicking a result row)
+
+### Changed
+
+- Plugin ID renamed to `com.danielvreeman.searchsort` (uninstall the old `com.danielvreeman.searchsort` install if present)
+- Minimum Joplin version raised to **3.4** (context menus use `webviewApi.menuPopupFromTemplate`)
+- When a note is moved out of the scoped notebook, the next selected note follows the **panel's current sort order** (title, updated, etc.), not Joplin's default note-list sort
 
 ### Fixed
 
@@ -22,19 +32,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - Removed per-poll move-reconcile (was slowing the panel and racing folder changes)
 - Live panel columns (Title, Updated, Created, Notebook) refresh when note metadata changes, without changing selection
 
-### Changed
-
-- When a note is moved out of the scoped notebook, the next selected note follows the **panel’s current sort order** (title, updated, etc.), not Joplin’s default note-list sort
-
-### Planned
-
-- Publish to the Joplin plugin repository (npm) for in-app **Update**
-
 ## [0.1.3] - 2026-08-23
 
 ### Fixed
 
-- Inbox-processing workflow: when the selected note is moved to another notebook, it is removed from the scoped list immediately and work continues on the next note (aligned with Joplin’s core note-list behavior)
+- Inbox-processing workflow: when the selected note is moved to another notebook, it is removed from the scoped list immediately and work continues on the next note (aligned with Joplin's core note-list behavior)
 - Stale production packaging of `ui/panel.js` (build now force-copies panel assets from `src/ui`)
 
 ### Changed
@@ -69,7 +71,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - Preserve last query and sort setting
 - Production `.jpl` packaging
 
-[Unreleased]: https://github.com/djvreeman/joplin-search-sort-plugin/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/djvreeman/joplin-search-sort-plugin/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.2.0
 [0.1.3]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.1.3
 [0.1.2]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.1.2
 [0.1.1]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.1.1

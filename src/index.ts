@@ -9,6 +9,11 @@ import {
 } from './panelBootstrap';
 import { registerSettings, readRuntimeSettings, SETTINGS } from './settings';
 import { buildEffectiveQuery, type NotebookScope } from './searchQuery';
+import {
+	buildNoteListContextMenu,
+	externalLinkForNote,
+	markdownLinkForNote,
+} from './noteListContextMenu';
 
 interface SearchUiState {
 	textQuery: string;
@@ -151,9 +156,52 @@ async function executeSearch(state: SearchUiState) {
 	};
 }
 
+async function registerContextMenuCommands(): Promise<void> {
+	await joplin.commands.register({
+		name: 'searchSortCopyMarkdownLink',
+		execute: async (noteIds: string[]) => {
+			if (!Array.isArray(noteIds) || !noteIds.length) return;
+			const links: string[] = [];
+			for (const noteId of noteIds) {
+				const note = await joplin.data.get(['notes', noteId], { fields: ['id', 'title'] });
+				if (note?.id) links.push(markdownLinkForNote(note));
+			}
+			if (links.length) await joplin.clipboard.writeText(links.join(' '));
+		},
+	});
+
+	await joplin.commands.register({
+		name: 'searchSortCopyExternalLink',
+		execute: async (noteIds: string[]) => {
+			if (!Array.isArray(noteIds) || !noteIds.length) return;
+			await joplin.clipboard.writeText(externalLinkForNote(noteIds[0]));
+		},
+	});
+
+	await joplin.commands.register({
+		name: 'searchSortSwitchToNoteType',
+		execute: async (noteIds: string[], type: 'note' | 'todo') => {
+			if (!Array.isArray(noteIds) || !noteIds.length) return;
+			const newIsTodo = type === 'todo' ? 1 : 0;
+			for (const noteId of noteIds) {
+				const note = await joplin.data.get(['notes', noteId], {
+					fields: ['id', 'is_todo'],
+				});
+				if (!note?.id || Number(note.is_todo) === newIsTodo) continue;
+				await joplin.data.put(['notes', noteId], null, {
+					is_todo: newIsTodo,
+					todo_due: 0,
+					todo_completed: 0,
+				});
+			}
+		},
+	});
+}
+
 joplin.plugins.register({
 	onStart: async function() {
 		await registerSettings(joplin);
+		await registerContextMenuCommands();
 
 		const runtime = await readRuntimeSettings(joplin);
 		const sidebarFolder = await sidebarFolderContext();
@@ -237,6 +285,68 @@ joplin.plugins.register({
 				return {
 					type: 'selectionChanged',
 					payload: { noteId: message.payload.noteId },
+				};
+			}
+
+			if (message.type === 'runNoteCommand') {
+				const noteId = message.payload?.noteId;
+				const command = message.payload?.command;
+				if (!noteId || typeof command !== 'string') {
+					return { ok: false, message: 'Missing note or command' };
+				}
+
+				try {
+					const current = await selectedNoteId();
+					if (current !== noteId) {
+						await joplin.commands.execute('openNote', noteId);
+					}
+					await joplin.commands.execute(command, [noteId]);
+					return { ok: true };
+				} catch (error) {
+					const err = error instanceof Error ? error : new Error(String(error));
+					console.error(`Advanced Search Sort failed to run ${command}:`, err);
+					return { ok: false, message: err.message };
+				}
+			}
+
+			if (message.type === 'getNoteListContextMenu') {
+				const noteIds = Array.isArray(message.payload?.noteIds)
+					? message.payload.noteIds.filter((id: unknown) => typeof id === 'string' && id)
+					: [];
+				if (!noteIds.length) {
+					return { type: 'noteListContextMenu', payload: { items: [] } };
+				}
+
+				const notes = [];
+				for (const noteId of noteIds) {
+					try {
+						const note = await joplin.data.get(['notes', noteId], {
+							fields: [
+								'id',
+								'title',
+								'deleted_time',
+								'encryption_applied',
+								'markup_language',
+							],
+						});
+						if (note?.id) notes.push(note);
+					} catch {
+						// ignore missing notes
+					}
+				}
+
+				let syncTarget = 0;
+				try {
+					syncTarget = Number(await joplin.settings.globalValue('sync.target')) || 0;
+				} catch {
+					syncTarget = 0;
+				}
+
+				return {
+					type: 'noteListContextMenu',
+					payload: {
+						items: buildNoteListContextMenu({ noteIds, notes, syncTarget }),
+					},
 				};
 			}
 

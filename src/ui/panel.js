@@ -596,6 +596,11 @@
         openListedNote(row.id, { focusRow: true });
       });
 
+      rowEl.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        void showNoteContextMenu(row.id);
+      });
+
       wrapper.appendChild(rowEl);
       resultsBody.appendChild(wrapper);
     }
@@ -640,6 +645,30 @@
     webviewApi.postMessage({ type: 'openNote', payload: { noteId } });
   }
 
+  async function showNoteContextMenu(noteId) {
+    if (!noteId || typeof webviewApi.menuPopupFromTemplate !== 'function') return;
+
+    // Match Joplin: right-click selects the note before showing the menu.
+    if (state.selectedNoteId !== noteId) {
+      state.selectedNoteId = noteId;
+      renderRows();
+      await webviewApi.postMessage({ type: 'openNote', payload: { noteId } });
+    }
+
+    try {
+      const response = await webviewApi.postMessage({
+        type: 'getNoteListContextMenu',
+        payload: { noteIds: [noteId] },
+      });
+      const items = response?.payload?.items;
+      if (Array.isArray(items) && items.length) {
+        webviewApi.menuPopupFromTemplate(items);
+      }
+    } catch (error) {
+      console.error('Advanced Search Sort failed to open context menu:', error);
+    }
+  }
+
   function navigateListedNote(delta) {
     const nextId = noteIdAtOffset(state.rows, state.selectedNoteId, delta);
     if (!nextId || nextId === state.selectedNoteId) {
@@ -647,6 +676,46 @@
       return;
     }
     openListedNote(nextId, { focusRow: true });
+  }
+
+  function runNoteCommandForSelection(command) {
+    if (!state.selectedNoteId || !state.rows.some(r => r.id === state.selectedNoteId)) return;
+    void webviewApi.postMessage({
+      type: 'runNoteCommand',
+      payload: { noteId: state.selectedNoteId, command },
+    });
+  }
+
+  function handlePanelKeydown(e) {
+    const mod = e.metaKey || e.ctrlKey;
+
+    if (mod && !e.altKey && !e.shiftKey) {
+      const key = e.key.toLowerCase();
+      if (key === 't' || key === 'm') {
+        if (state.selectedNoteId && state.rows.some(r => r.id === state.selectedNoteId)) {
+          e.preventDefault();
+          runNoteCommandForSelection(key === 't' ? 'setTags' : 'moveToFolder');
+        }
+        return;
+      }
+    }
+
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    if (mod || e.altKey || e.shiftKey) return;
+
+    const target = e.target;
+    if (
+      target === queryInput
+      || (target && typeof target.closest === 'function' && target.closest('input, textarea, select'))
+    ) {
+      return;
+    }
+
+    if (!state.rows.length) return;
+    if (!state.selectedNoteId || !state.rows.some(r => r.id === state.selectedNoteId)) return;
+
+    e.preventDefault();
+    navigateListedNote(e.key === 'ArrowDown' ? 1 : -1);
   }
 
   function applySearchResults(payload) {
@@ -1010,24 +1079,7 @@
     }
   });
 
-  document.addEventListener('keydown', e => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-
-    const target = e.target;
-    if (
-      target === queryInput
-      || (target && typeof target.closest === 'function' && target.closest('input, textarea, select'))
-    ) {
-      return;
-    }
-
-    if (!state.rows.length) return;
-    if (!state.selectedNoteId || !state.rows.some(r => r.id === state.selectedNoteId)) return;
-
-    e.preventDefault();
-    navigateListedNote(e.key === 'ArrowDown' ? 1 : -1);
-  });
+  document.addEventListener('keydown', handlePanelKeydown);
 
   void loadInitialState().then(() => {
     state.folderPollId = setInterval(() => {

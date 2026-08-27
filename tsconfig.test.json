@@ -9,6 +9,7 @@
     "src/searchSortService.ts",
     "src/panelBootstrap.ts",
     "src/searchQuery.ts",
-    "src/listNavigation.ts"
+    "src/listNavigation.ts",
+    "src/noteListContextMenu.ts"
   ]
 }
