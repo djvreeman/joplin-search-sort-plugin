@@ -56,7 +56,9 @@ if (!manifest.id) {
 }
 
 if (manifest.version !== pkg.version) {
-	console.warn(`Warning: version mismatch package.json=${pkg.version} manifest.json=${manifest.version}`);
+	throw new Error(
+		`Version mismatch: package.json=${pkg.version} dist/manifest.json=${manifest.version}. Run npm run build again.`,
+	);
 }
 
 fs.mkdirSync(publishDir, { recursive: true });
@@ -79,4 +81,4 @@ fs.writeFileSync(infoPath, `${JSON.stringify(pluginInfo, null, '\t')}\n`, 'utf8'
 
 console.log(`Created ${jplPath}`);
 console.log(`Created ${infoPath}`);
-console.log(`Version ${manifest.version}`);
+console.log(`Version ${manifest.version} (verify: tar -xOf '${jplPath}' manifest.json | grep version)`);

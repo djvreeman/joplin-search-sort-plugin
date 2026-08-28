@@ -5,6 +5,24 @@ const { execSync } = require('child_process');
 
 const rootDir = path.resolve(__dirname, '..');
 const distDir = path.join(rootDir, 'dist');
+const packageJsonPath = path.join(rootDir, 'package.json');
+
+function readJson(filePath) {
+	return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+function syncDistManifestVersion(targetDist) {
+	const pkg = readJson(packageJsonPath);
+	const manifestPath = path.join(targetDist, 'manifest.json');
+	if (!fs.existsSync(manifestPath)) return;
+
+	const manifest = readJson(manifestPath);
+	if (manifest.version === pkg.version) return;
+
+	manifest.version = pkg.version;
+	fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, '\t')}\n`, 'utf8');
+	console.log(`Synced dist/manifest.json version to ${pkg.version}`);
+}
 
 function copyDir(from, to) {
 	fs.mkdirSync(to, { recursive: true });
@@ -57,9 +75,11 @@ try {
 		copyUiAssets(tempDist);
 		removeDir(distDir);
 		copyDir(tempDist, distDir);
+		syncDistManifestVersion(distDir);
 	} else {
 		execSync('webpack --mode production', { cwd: rootDir, stdio: 'inherit' });
 		copyUiAssets(distDir);
+		syncDistManifestVersion(distDir);
 	}
 } finally {
 	removeDir(tempDist);
