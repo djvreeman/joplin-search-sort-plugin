@@ -100,6 +100,30 @@ test('decideNoteListingMembership treats delete event with missing meta as delet
   );
 });
 
+test('decideNoteListingMembership treats soft-deleted notes as deleted', () => {
+  assert.equal(
+    decideNoteListingMembership({
+      scopedNotebookId: 'inbox',
+      searchAllNotebooks: false,
+      meta: { parentId: 'inbox', deletedTime: 123 },
+      eventType: 2,
+    }),
+    'deleted',
+  );
+});
+
+test('decideNoteListingMembership treats soft-delete as deleted when browsing all notebooks', () => {
+  assert.equal(
+    decideNoteListingMembership({
+      scopedNotebookId: null,
+      searchAllNotebooks: true,
+      meta: { parentId: 'anywhere', deletedTime: 99 },
+      eventType: 2,
+    }),
+    'deleted',
+  );
+});
+
 test('decideNoteListingMembership never leaves on parent change when browsing all notebooks', () => {
   assert.equal(
     decideNoteListingMembership({

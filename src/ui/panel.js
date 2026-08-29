@@ -17,6 +17,8 @@
     }
   }
 
+  const FOLDER_POLL_GRACE_MS = 3000;
+
   const state = {
     textQuery: '',
     sortField: 'relevance',
@@ -33,6 +35,8 @@
     suppressSortClick: false,
     folderPollId: null,
     lastPolledFolderId: null,
+    folderPollGraceUntil: 0,
+    folderPollBaselineReady: false,
     startupComplete: false,
   };
 
@@ -254,9 +258,10 @@
   const NOTE_EVENT_DELETE = 3;
 
   function decideNoteListingMembership(meta, eventType) {
-    if (!meta) {
-      return eventType === NOTE_EVENT_DELETE ? 'deleted' : 'inconclusive';
-    }
+    if (eventType === NOTE_EVENT_DELETE) return 'deleted';
+    if (!meta) return 'inconclusive';
+    // Soft-deleted notes keep parent_id; still remove them from the panel list.
+    if (meta.deletedTime) return 'deleted';
     if (state.searchAllNotebooks || !state.notebookScope) return 'stay';
     if (meta.parentId !== state.notebookScope.id) return 'left_scope';
     return 'stay';
@@ -455,10 +460,30 @@
       return;
     }
 
+    // Delete: remove immediately from the panel list (hard delete or trash).
+    if (eventType === NOTE_EVENT_DELETE) {
+      if (noteId) {
+        const wasSelected = state.selectedNoteId === noteId;
+        removeNoteFromListing(noteId, { advanceSelection: wasSelected });
+      } else {
+        scheduleListingRefresh(150);
+      }
+      return;
+    }
+
     // Updates: refresh Title/Updated/Created/Notebook in place.
-    // Advance selection ONLY when parent notebook left the current scope (or delete).
+    // Advance selection ONLY when parent notebook left the current scope (or soft-delete).
     if (noteId) {
       const wasSelected = state.selectedNoteId === noteId;
+      const inList = state.rows.some(r => r.id === noteId);
+
+      // Selected note missing from the list (e.g. just created) — refresh so
+      // renames and other edits become visible.
+      if (!inList && wasSelected) {
+        scheduleListingRefresh(150);
+        return;
+      }
+
       await reconcileNotePresence(noteId, {
         wasSelected,
         advanceSelection: wasSelected,
@@ -946,15 +971,27 @@
       const folder = response?.payload;
       if (!folder) return;
 
+      const now = Date.now();
+
       // Folder changes first. Do not run move-reconcile here — that was firing
       // getNoteMeta every poll and racing notebook switches on large folders.
       if (folder.folderId && folder.folderId !== state.lastPolledFolderId) {
-        state.lastPolledFolderId = folder.folderId;
-        if (folder.selectedNoteId) {
-          state.selectedNoteId = folder.selectedNoteId;
+        if (now < state.folderPollGraceUntil) {
+          // Joplin's sidebar folder can be wrong briefly on startup; keep restored scope.
+        } else if (!state.folderPollBaselineReady) {
+          state.folderPollBaselineReady = true;
+          state.lastPolledFolderId = folder.folderId;
+        } else {
+          state.lastPolledFolderId = folder.folderId;
+          if (folder.selectedNoteId) {
+            state.selectedNoteId = folder.selectedNoteId;
+          }
+          setNotebookScope(folder.folderId, folder.folderTitle);
+          return;
         }
-        setNotebookScope(folder.folderId, folder.folderTitle);
-        return;
+      } else if (!state.folderPollBaselineReady && now >= state.folderPollGraceUntil) {
+        state.folderPollBaselineReady = true;
+        state.lastPolledFolderId = folder.folderId || state.lastPolledFolderId;
       }
 
       const polledSelected = folder.selectedNoteId || null;
@@ -1003,11 +1040,16 @@
 
     try {
       const folderResponse = await webviewApi.postMessage({ type: 'getFolderContext' });
-      state.lastPolledFolderId = folderResponse?.payload?.folderId || state.notebookScope?.id || null;
+      // Prefer restored panel scope over Joplin's sidebar on startup.
+      state.lastPolledFolderId = state.notebookScope?.id
+        || folderResponse?.payload?.folderId
+        || null;
     } catch {
       state.lastPolledFolderId = state.notebookScope?.id || null;
     }
 
+    state.folderPollGraceUntil = Date.now() + FOLDER_POLL_GRACE_MS;
+    state.folderPollBaselineReady = false;
     state.startupComplete = true;
   }
 
@@ -1043,8 +1085,40 @@
   scopeChipLabel = scopeNotebookChip.querySelector('.scope-chip-label');
   clearScopeBtn = document.getElementById('clearScopeBtn');
 
+  async function createNewNote() {
+    // Clear text search so a scoped folder listing can include the new note.
+    if (queryInput.value) {
+      queryInput.value = '';
+      state.textQuery = '';
+      updateSearchActionButton();
+    }
+
+    const notebookId =
+      !state.searchAllNotebooks && state.notebookScope?.id
+        ? state.notebookScope.id
+        : null;
+
+    try {
+      const response = await webviewApi.postMessage({
+        type: 'newNote',
+        payload: { notebookId },
+      });
+      const noteId = response?.payload?.noteId || null;
+      if (noteId) state.selectedNoteId = noteId;
+
+      await runSearch();
+
+      if (noteId) {
+        scrollSelectedIntoView();
+      }
+    } catch (error) {
+      console.error('Advanced Search Sort failed to create note:', error);
+      updateStatus(`Failed to create note: ${error?.message || String(error)}`);
+    }
+  }
+
   newNoteBtn.addEventListener('click', () => {
-    webviewApi.postMessage({ type: 'newNote' });
+    void createNewNote();
   });
 
   allNotebooksBtn.addEventListener('click', () => {

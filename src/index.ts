@@ -1,5 +1,5 @@
 import joplin from 'api';
-import { runSearch, type SortDirection, type SortField } from './searchSortService';
+import { listFolderNotes, runSearch, type SortDirection, type SortField } from './searchSortService';
 import {
 	buildPanelHtml,
 	buildPanelState,
@@ -134,13 +134,24 @@ async function persistUiState(state: SearchUiState): Promise<void> {
 
 async function executeSearch(state: SearchUiState) {
 	const settings = await readRuntimeSettings(joplin);
-	const effectiveQuery = buildEffectiveQuery(state.textQuery, state.notebookScope);
-	const response = await runSearch(joplin, {
-		query: effectiveQuery,
-		sortField: state.sortField,
-		sortDirection: state.sortDirection,
-		maxResults: settings.maxResults,
-	});
+	const textQuery = state.textQuery.trim();
+
+	// Empty-query notebook browsing uses the folder data API so brand-new notes
+	// appear immediately (Joplin's search index can lag behind creates).
+	const response =
+		state.notebookScope?.id && !state.searchAllNotebooks && !textQuery
+			? await listFolderNotes(joplin, {
+					folderId: state.notebookScope.id,
+					sortField: state.sortField,
+					sortDirection: state.sortDirection,
+					maxResults: settings.maxResults,
+				})
+			: await runSearch(joplin, {
+					query: buildEffectiveQuery(state.textQuery, state.notebookScope),
+					sortField: state.sortField,
+					sortDirection: state.sortDirection,
+					maxResults: settings.maxResults,
+				});
 
 	await persistUiState(state);
 
@@ -238,7 +249,14 @@ joplin.plugins.register({
 				if (!noteId) return { type: 'noteMeta', payload: null };
 				try {
 					const note = await joplin.data.get(['notes', noteId], {
-						fields: ['id', 'parent_id', 'title', 'updated_time', 'created_time'],
+						fields: [
+							'id',
+							'parent_id',
+							'title',
+							'updated_time',
+							'created_time',
+							'deleted_time',
+						],
 					});
 					if (!note?.id) return { type: 'noteMeta', payload: null };
 
@@ -263,6 +281,7 @@ joplin.plugins.register({
 							title: note.title || '(Untitled)',
 							updatedTime: note.updated_time || 0,
 							createdTime: note.created_time || 0,
+							deletedTime: note.deleted_time || 0,
 						},
 					};
 				} catch {
@@ -351,10 +370,31 @@ joplin.plugins.register({
 			}
 
 			if (message.type === 'newNote') {
-				await joplin.commands.execute('newNote');
-				await joplin.views.panels.postMessage(panel, {
-					type: 'notesMayHaveChanged',
-				});
+				const notebookId =
+					typeof message.payload?.notebookId === 'string' && message.payload.notebookId
+						? message.payload.notebookId
+						: null;
+				try {
+					let noteId: string | null = null;
+					if (notebookId) {
+						const created = await joplin.data.post(['notes'], null, {
+							title: '',
+							parent_id: notebookId,
+						});
+						noteId = created?.id || null;
+						if (noteId) {
+							await joplin.commands.execute('openNote', noteId);
+						}
+					} else {
+						await joplin.commands.execute('newNote');
+						noteId = await selectedNoteId();
+					}
+					return { type: 'noteCreated', payload: { noteId } };
+				} catch (error) {
+					const err = error instanceof Error ? error : new Error(String(error));
+					console.error('Advanced Search Sort failed to create note:', err);
+					return { type: 'noteCreated', payload: { noteId: null, message: err.message } };
+				}
 			}
 
 			if (message.type === 'saveUiState') {

@@ -7,6 +7,12 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Restored notebook scope (e.g. @Inbox) is no longer overwritten on startup when Joplin briefly reports a different sidebar folder
+- **New note** creates in the panel's scoped notebook, refreshes the list, and selects the new note (title edits update live once it appears)
+- Deleted notes (trash or permanent) are removed from the panel listing immediately
+
 ### Planned
 
 - Publish to the Joplin plugin repository (npm) for in-app **Update**

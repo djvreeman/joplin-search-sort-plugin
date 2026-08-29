@@ -52,13 +52,18 @@ export type NoteListingDecision = 'stay' | 'left_scope' | 'deleted' | 'inconclus
 export function decideNoteListingMembership(input: {
   scopedNotebookId: string | null;
   searchAllNotebooks: boolean;
-  meta: { parentId: string } | null;
+  meta: { parentId: string; deletedTime?: number } | null;
   eventType?: number | null;
 }): NoteListingDecision {
+  // Explicit delete events always leave the listing (hard or soft delete).
+  if (input.eventType === NOTE_EVENT_DELETE) return 'deleted';
+
   if (!input.meta) {
-    if (input.eventType === NOTE_EVENT_DELETE) return 'deleted';
     return 'inconclusive';
   }
+
+  // Soft-deleted notes stay in the DB with parent_id; exclude them from the list.
+  if (input.meta.deletedTime) return 'deleted';
 
   // No notebook scope: in-place edits never imply "moved out".
   if (input.searchAllNotebooks || !input.scopedNotebookId) {
