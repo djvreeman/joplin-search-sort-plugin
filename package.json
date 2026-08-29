@@ -1,6 +1,6 @@
 {
   "name": "joplin-plugin-search-sort",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Advanced searchable and sortable note results for Joplin",
   "author": "Daniel Vreeman",
   "license": "Apache-2.0",

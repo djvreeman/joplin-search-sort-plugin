@@ -7,15 +7,17 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Planned
+
+- Publish to the Joplin plugin repository (npm) for in-app **Update**
+
+## [0.2.1] - 2026-08-29
+
 ### Fixed
 
 - Restored notebook scope (e.g. @Inbox) is no longer overwritten on startup when Joplin briefly reports a different sidebar folder
 - **New note** creates in the panel's scoped notebook, refreshes the list, and selects the new note (title edits update live once it appears)
 - Deleted notes (trash or permanent) are removed from the panel listing immediately
-
-### Planned
-
-- Publish to the Joplin plugin repository (npm) for in-app **Update**
 
 ## [0.2.0] - 2026-08-27
 
@@ -77,7 +79,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - Preserve last query and sort setting
 - Production `.jpl` packaging
 
-[Unreleased]: https://github.com/djvreeman/joplin-search-sort-plugin/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/djvreeman/joplin-search-sort-plugin/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.2.1
 [0.2.0]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.2.0
 [0.1.3]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.1.3
 [0.1.2]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.1.2

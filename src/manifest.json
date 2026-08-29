@@ -2,7 +2,7 @@
 	"manifest_version": 1,
 	"id": "com.danielvreeman.searchsort",
 	"app_min_version": "3.4",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"name": "Advanced Search Sort",
 	"description": "Search notes and sort results by metadata columns.",
 	"author": "Daniel Vreeman",

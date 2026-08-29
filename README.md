@@ -3,7 +3,7 @@
 A Joplin desktop plugin that adds a searchable, sortable note list panel — similar to Joplin’s built-in note list, with column sorting, notebook scoping, and layout persistence.
 
 **Plugin ID:** `com.danielvreeman.searchsort`  
-**Current version:** 0.2.0
+**Current version:** 0.2.1
 
 ## Features
 
