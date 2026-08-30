@@ -11,6 +11,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 - **Maximum notes to load** setting label clarifies that `0` uses the default 5,000-note cap (not unlimited); status line explains how to raise the limit when capped
 - Scoped notebook browsing (no search text) uses your default sort field/direction instead of Relevance, and loads notes in that order from Joplin
+- **New note** from All notebooks (or after clearing a search) scopes the panel to the notebook where the note was created and selects it in the list
 
 ### Planned
 

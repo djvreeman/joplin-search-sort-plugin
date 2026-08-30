@@ -880,11 +880,16 @@
     refreshListing();
   }
 
-  function setNotebookScope(folderId, folderTitle) {
+  function scopeToNotebook(folderId, folderTitle) {
     state.notebookScope = folderId ? { id: folderId, title: folderTitle } : null;
     state.searchAllNotebooks = false;
+    state.lastPolledFolderId = folderId || null;
     applyFolderBrowseSort();
     updateScopeBar();
+  }
+
+  function setNotebookScope(folderId, folderTitle) {
+    scopeToNotebook(folderId, folderTitle);
     void persistUiState();
     refreshListing();
   }
@@ -1118,7 +1123,7 @@
       updateSearchActionButton();
     }
 
-    const notebookId =
+    const scopedNotebookId =
       !state.searchAllNotebooks && state.notebookScope?.id
         ? state.notebookScope.id
         : null;
@@ -1126,15 +1131,26 @@
     try {
       const response = await webviewApi.postMessage({
         type: 'newNote',
-        payload: { notebookId },
+        payload: { notebookId: scopedNotebookId },
       });
       const noteId = response?.payload?.noteId || null;
+      const createdNotebookId = response?.payload?.notebookId || null;
+      const createdNotebookTitle = response?.payload?.notebookTitle || '';
+
       if (noteId) state.selectedNoteId = noteId;
 
+      // After creating from "All notebooks" (or after clearing a failed search),
+      // scope to the notebook that received the new note so the panel can list it.
+      if (createdNotebookId && createdNotebookTitle && state.searchAllNotebooks) {
+        scopeToNotebook(createdNotebookId, createdNotebookTitle);
+      }
+
       await runSearch();
+      void persistUiState();
 
       if (noteId) {
         scrollSelectedIntoView();
+        focusSelectedRow();
       }
     } catch (error) {
       console.error('Advanced Search Sort failed to create note:', error);

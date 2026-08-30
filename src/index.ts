@@ -391,7 +391,32 @@ joplin.plugins.register({
 						await joplin.commands.execute('newNote');
 						noteId = await selectedNoteId();
 					}
-					return { type: 'noteCreated', payload: { noteId } };
+
+					let createdNotebookId = notebookId;
+					let notebookTitle = '';
+					if (noteId) {
+						const note = await joplin.data.get(['notes', noteId], {
+							fields: ['id', 'parent_id'],
+						});
+						if (note?.parent_id) {
+							createdNotebookId = note.parent_id;
+						}
+					}
+					if (createdNotebookId) {
+						const folder = await joplin.data.get(['folders', createdNotebookId], {
+							fields: ['id', 'title'],
+						});
+						notebookTitle = folder?.title || '(Untitled notebook)';
+					}
+
+					return {
+						type: 'noteCreated',
+						payload: {
+							noteId,
+							notebookId: createdNotebookId,
+							notebookTitle,
+						},
+					};
 				} catch (error) {
 					const err = error instanceof Error ? error : new Error(String(error));
 					console.error('Advanced Search Sort failed to create note:', err);
