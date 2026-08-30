@@ -1,5 +1,6 @@
 import type { SortDirection, SortField } from './searchSortService';
 import type { NotebookScope } from './searchQuery';
+import { applyFolderBrowseSort } from './folderBrowseSort';
 
 export interface RuntimeSettings {
 	defaultSortField: SortField;
@@ -17,6 +18,8 @@ export interface PanelStatePayload {
 	textQuery: string;
 	sortField: SortField;
 	sortDirection: SortDirection;
+	defaultSortField: SortField;
+	defaultSortDirection: SortDirection;
 	panelColumns: unknown[] | null;
 	notebookScope: NotebookScope | null;
 	searchAllNotebooks: boolean;
@@ -105,10 +108,18 @@ export function buildPanelState(
 		notebookScope = { id: folder.folderId, title: folder.folderTitle };
 	}
 
+	if (notebookScope && !searchAllNotebooks && !textQuery.trim()) {
+		const resolved = applyFolderBrowseSort(sortField, sortDirection, runtime);
+		sortField = resolved.sortField;
+		sortDirection = resolved.sortDirection;
+	}
+
 	return {
 		textQuery,
 		sortField,
 		sortDirection,
+		defaultSortField: runtime.defaultSortField,
+		defaultSortDirection: runtime.defaultSortDirection,
 		panelColumns: parsePanelColumns(runtime.panelColumns),
 		notebookScope,
 		searchAllNotebooks,

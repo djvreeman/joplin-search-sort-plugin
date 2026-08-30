@@ -23,6 +23,8 @@
     textQuery: '',
     sortField: 'relevance',
     sortDirection: 'desc',
+    defaultSortField: 'updated',
+    defaultSortDirection: 'desc',
     rows: [],
     columns: [],
     selectedNoteId: null,
@@ -217,9 +219,15 @@
     });
   }
 
+  function formatTruncatedSuffix(payload) {
+    if (!payload?.truncated) return '';
+    const limit = payload.resultLimit || 5000;
+    return ` (showing first ${limit} — raise "Maximum notes to load" in plugin settings)`;
+  }
+
   function formatResultStatus(payload) {
     const count = Array.isArray(payload.rows) ? payload.rows.length : 0;
-    const truncated = payload.truncated ? ' (limit reached)' : '';
+    const truncated = formatTruncatedSuffix(payload);
     const text = state.textQuery.trim();
     if (state.notebookScope && !state.searchAllNotebooks) {
       if (text) {
@@ -236,7 +244,8 @@
   function updateListingStatusFromRows(truncated) {
     updateStatus(formatResultStatus({
       rows: state.rows,
-      truncated: !!truncated,
+      truncated: truncated ?? state.listTruncated,
+      resultLimit: state.resultLimit,
     }));
   }
 
@@ -748,8 +757,10 @@
     if (payload.textQuery !== undefined) state.textQuery = payload.textQuery;
     if (payload.notebookScope !== undefined) state.notebookScope = payload.notebookScope;
     if (payload.searchAllNotebooks !== undefined) state.searchAllNotebooks = payload.searchAllNotebooks;
-    state.sortField = payload.sortField || state.sortField;
-    state.sortDirection = payload.sortDirection || state.sortDirection;
+    if (payload.sortField) state.sortField = payload.sortField;
+    if (payload.sortDirection) state.sortDirection = payload.sortDirection;
+    state.resultLimit = payload.resultLimit;
+    state.listTruncated = !!payload.truncated;
     if (payload.selectedNoteId !== undefined) state.selectedNoteId = payload.selectedNoteId;
     queryInput.value = state.textQuery;
     updateSearchActionButton();
@@ -831,10 +842,22 @@
     state.columns = next;
   }
 
+  function applyFolderBrowseSort() {
+    if ((state.textQuery || '').trim()) return;
+
+    let field = state.defaultSortField;
+    if (field === 'relevance') field = 'updated';
+    state.sortField = field;
+    state.sortDirection = state.defaultSortDirection;
+    renderHeader();
+  }
+
   function applyPayload(payload, notesColumns) {
     state.textQuery = payload.textQuery || '';
     state.sortField = payload.sortField || 'relevance';
     state.sortDirection = payload.sortDirection || 'desc';
+    if (payload.defaultSortField) state.defaultSortField = payload.defaultSortField;
+    if (payload.defaultSortDirection) state.defaultSortDirection = payload.defaultSortDirection;
     state.searchAllNotebooks = !!payload.searchAllNotebooks;
     state.notebookScope = payload.notebookScope || null;
     if (payload.selectedNoteId !== undefined) state.selectedNoteId = payload.selectedNoteId;
@@ -860,6 +883,7 @@
   function setNotebookScope(folderId, folderTitle) {
     state.notebookScope = folderId ? { id: folderId, title: folderTitle } : null;
     state.searchAllNotebooks = false;
+    applyFolderBrowseSort();
     updateScopeBar();
     void persistUiState();
     refreshListing();
@@ -881,6 +905,7 @@
     queryInput.value = '';
     state.textQuery = '';
     updateSearchActionButton();
+    applyFolderBrowseSort();
     void persistUiState();
     refreshListing();
     queryInput.focus();

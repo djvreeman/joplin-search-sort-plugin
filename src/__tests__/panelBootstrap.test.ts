@@ -73,6 +73,26 @@ test('extractBootstrapFromHtml round-trips column order', () => {
 	]);
 });
 
+test('buildPanelState uses default sort for scoped notebook browse without query', () => {
+	const browseRuntime = {
+		...runtime,
+		lastQuery: '',
+		lastSortField: 'relevance' as const,
+		lastSortDirection: 'desc' as const,
+		defaultSortField: 'updated' as const,
+		defaultSortDirection: 'desc' as const,
+	};
+	const state = buildPanelState(
+		browseRuntime,
+		{ folderId: 'sidebar-id', folderTitle: 'Inbox' },
+		{ id: 'folder-auto', title: 'Auto' },
+	);
+
+	assert.equal(state.textQuery, '');
+	assert.equal(state.sortField, 'updated');
+	assert.equal(state.sortDirection, 'desc');
+});
+
 test('folderIdFromNotesParent reads folder selection', () => {
 	const raw = '{"type":"Folder","selectedItemId":"abc123"}';
 	assert.equal(folderIdFromNotesParent(raw), 'abc123');

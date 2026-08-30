@@ -1,3 +1,10 @@
+import {
+	applyFolderBrowseSort,
+	apiOrderParams,
+	effectiveResultLimit,
+	type SortDefaults,
+} from './folderBrowseSort';
+
 export type SortField = 'relevance' | 'updated' | 'created' | 'title' | 'notebook';
 export type SortDirection = 'asc' | 'desc';
 
@@ -33,7 +40,7 @@ export interface SearchRequest {
   maxResults: number;
 }
 
-export interface FolderListRequest {
+export interface FolderListRequest extends SortDefaults {
   folderId: string;
   sortField: SortField;
   sortDirection: SortDirection;
@@ -47,6 +54,7 @@ export interface SearchResponse {
   sortDirection: SortDirection;
   hasMore: boolean;
   truncated: boolean;
+  resultLimit?: number;
 }
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -119,13 +127,13 @@ async function fetchSearchPages(
   query: string,
   noteFields: string[],
   maxResults: number,
-): Promise<{ items: SearchResultNote[]; hasMore: boolean; truncated: boolean }> {
+): Promise<{ items: SearchResultNote[]; hasMore: boolean; truncated: boolean; resultLimit: number }> {
   const items: SearchResultNote[] = [];
   let page = 1;
   let hasMore = false;
   let truncated = false;
   const unlimited = maxResults === 0;
-  const targetMax = unlimited ? SAFETY_MAX_RESULTS : maxResults;
+  const targetMax = effectiveResultLimit(maxResults, SAFETY_MAX_RESULTS);
 
   while (true) {
     const result = await joplin.data.get(['search'], {
@@ -142,7 +150,7 @@ async function fetchSearchPages(
       if (items.length > targetMax) {
         items.length = targetMax;
       }
-      truncated = unlimited ? items.length >= SAFETY_MAX_RESULTS : items.length >= maxResults;
+      truncated = items.length >= targetMax && !!result.has_more;
       hasMore = !!result.has_more;
       break;
     }
@@ -155,7 +163,7 @@ async function fetchSearchPages(
     page += 1;
   }
 
-  return { items, hasMore, truncated };
+  return { items, hasMore, truncated, resultLimit: targetMax };
 }
 
 async function fetchFolderNotePages(
@@ -163,20 +171,26 @@ async function fetchFolderNotePages(
   folderId: string,
   noteFields: string[],
   maxResults: number,
-): Promise<{ items: SearchResultNote[]; hasMore: boolean; truncated: boolean }> {
+  order?: { order_by: string; order_dir: 'ASC' | 'DESC' } | null,
+): Promise<{ items: SearchResultNote[]; hasMore: boolean; truncated: boolean; resultLimit: number }> {
   const items: SearchResultNote[] = [];
   let page = 1;
   let hasMore = false;
   let truncated = false;
-  const unlimited = maxResults === 0;
-  const targetMax = unlimited ? SAFETY_MAX_RESULTS : maxResults;
+  const targetMax = effectiveResultLimit(maxResults, SAFETY_MAX_RESULTS);
 
   while (true) {
-    const result = await joplin.data.get(['folders', folderId, 'notes'], {
+    const query: Record<string, unknown> = {
       fields: noteFields,
       limit: MAX_SEARCH_LIMIT,
       page,
-    });
+    };
+    if (order) {
+      query.order_by = order.order_by;
+      query.order_dir = order.order_dir;
+    }
+
+    const result = await joplin.data.get(['folders', folderId, 'notes'], query);
 
     const pageItems: SearchResultNote[] = Array.isArray(result.items) ? result.items : [];
     items.push(...pageItems);
@@ -185,7 +199,7 @@ async function fetchFolderNotePages(
       if (items.length > targetMax) {
         items.length = targetMax;
       }
-      truncated = unlimited ? items.length >= SAFETY_MAX_RESULTS : items.length >= maxResults;
+      truncated = items.length >= targetMax && !!result.has_more;
       hasMore = !!result.has_more;
       break;
     }
@@ -198,7 +212,7 @@ async function fetchFolderNotePages(
     page += 1;
   }
 
-  return { items, hasMore, truncated };
+  return { items, hasMore, truncated, resultLimit: targetMax };
 }
 
 function mapNotesToRows(
@@ -235,17 +249,30 @@ export async function listFolderNotes(joplin: any, request: FolderListRequest): 
 
   const noteFields = ['id', 'title', 'created_time', 'updated_time', 'parent_id'];
   const maxResults = normalizeMaxResults(request.maxResults);
-  const { items, hasMore, truncated } = await fetchFolderNotePages(joplin, folderId, noteFields, maxResults);
+  const resolvedSort = applyFolderBrowseSort(
+    request.sortField,
+    request.sortDirection,
+    request,
+  );
+  const apiOrder = apiOrderParams(resolvedSort.sortField, resolvedSort.sortDirection);
+  const { items, hasMore, truncated, resultLimit } = await fetchFolderNotePages(
+    joplin,
+    folderId,
+    noteFields,
+    maxResults,
+    apiOrder,
+  );
   const notebookMap = await loadNotebookMap(joplin);
   const rows = mapNotesToRows(items, notebookMap);
 
   return {
-    rows: sortRows(rows, request.sortField, request.sortDirection),
+    rows: sortRows(rows, resolvedSort.sortField, resolvedSort.sortDirection),
     query: '',
-    sortField: request.sortField,
-    sortDirection: request.sortDirection,
+    sortField: resolvedSort.sortField,
+    sortDirection: resolvedSort.sortDirection,
     hasMore,
     truncated,
+    resultLimit: truncated ? resultLimit : undefined,
     folderTitle,
   };
 }
@@ -265,7 +292,7 @@ export async function runSearch(joplin: any, request: SearchRequest): Promise<Se
 
   const noteFields = ['id', 'title', 'created_time', 'updated_time', 'parent_id'];
   const maxResults = normalizeMaxResults(request.maxResults);
-  const { items, hasMore, truncated } = await fetchSearchPages(joplin, query, noteFields, maxResults);
+  const { items, hasMore, truncated, resultLimit } = await fetchSearchPages(joplin, query, noteFields, maxResults);
   const notebookMap = await loadNotebookMap(joplin);
   const rows = mapNotesToRows(items, notebookMap);
 
@@ -276,5 +303,6 @@ export async function runSearch(joplin: any, request: SearchRequest): Promise<Se
     sortDirection: request.sortDirection,
     hasMore,
     truncated,
+    resultLimit: truncated ? resultLimit : undefined,
   };
 }

@@ -53,8 +53,8 @@ export async function registerSettings(joplin: any): Promise<void> {
       type: 1,
       public: true,
       section: 'searchSortSection',
-      label: 'Maximum search results',
-      description: `Total results to fetch (0 = all, up to ${SAFETY_MAX_RESULTS}). API loads 100 per page.`,
+      label: 'Maximum notes to load',
+      description: `0 uses the default cap of ${SAFETY_MAX_RESULTS} notes (not unlimited). Enter a higher number to load more. API loads 100 per page.`,
     },
     [SETTINGS.preserveLastState]: {
       value: true,

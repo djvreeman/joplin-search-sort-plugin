@@ -145,6 +145,8 @@ async function executeSearch(state: SearchUiState) {
 					sortField: state.sortField,
 					sortDirection: state.sortDirection,
 					maxResults: settings.maxResults,
+					defaultSortField: settings.defaultSortField,
+					defaultSortDirection: settings.defaultSortDirection,
 				})
 			: await runSearch(joplin, {
 					query: buildEffectiveQuery(state.textQuery, state.notebookScope),

@@ -46,6 +46,8 @@ test('listFolderNotes loads notes for a folder via data API', async () => {
 		sortField: 'updated',
 		sortDirection: 'desc',
 		maxResults: 0,
+		defaultSortField: 'updated',
+		defaultSortDirection: 'desc',
 	});
 
 	assert.equal(response.folderTitle, 'Work');

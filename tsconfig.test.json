@@ -10,6 +10,7 @@
     "src/panelBootstrap.ts",
     "src/searchQuery.ts",
     "src/listNavigation.ts",
-    "src/noteListContextMenu.ts"
+    "src/noteListContextMenu.ts",
+    "src/folderBrowseSort.ts"
   ]
 }
