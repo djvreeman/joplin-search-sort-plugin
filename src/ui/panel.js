@@ -889,6 +889,16 @@
   }
 
   function setNotebookScope(folderId, folderTitle) {
+    // Sidebar notebook click: clear any search text and show the full notebook list.
+    if (state.searchTimer) {
+      clearTimeout(state.searchTimer);
+      state.searchTimer = null;
+    }
+    if (queryInput) {
+      queryInput.value = '';
+    }
+    state.textQuery = '';
+    updateSearchActionButton();
     scopeToNotebook(folderId, folderTitle);
     void persistUiState();
     refreshListing();

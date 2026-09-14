@@ -2,8 +2,11 @@ html,
 body {
   margin: 0;
   padding: 0;
+  width: 100%;
   height: 100%;
+  max-height: 100%;
   overflow: hidden;
+  position: relative;
 }
 
 body {
@@ -13,11 +16,15 @@ body {
   font-size: var(--joplin-font-size, 13px);
 }
 
+/* Pin the panel shell to the webview viewport so the list scrolls inside
+   .notes instead of growing the document (breaks mouse wheel in Electron). */
 .note-list {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  height: 100%;
   min-height: 0;
+  overflow: hidden;
   background-color: var(--joplin-background-color3, #1d1d1d);
   border-left: 1px solid var(--joplin-divider-color, #555555);
 }
@@ -25,6 +32,7 @@ body {
 .note-list-controls {
   box-sizing: border-box;
   display: flex;
+  flex: 0 0 auto;
   flex-direction: row;
   align-items: center;
   gap: 8px;
@@ -86,6 +94,7 @@ body {
 
 .scope-bar {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 8px;
   padding: 0 8px 8px;
@@ -223,6 +232,7 @@ body {
 }
 
 .status {
+  flex: 0 0 auto;
   padding: 4px 10px 6px;
   color: var(--joplin-color-faded);
   font-size: calc(var(--joplin-font-size) - 1px);
@@ -316,10 +326,29 @@ body {
 }
 
 .notes {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
+  /* Prefer a visible scrollbar in Electron webviews (overlay scrollbars can look absent). */
+  scrollbar-width: thin;
+  scrollbar-color: var(--joplin-scrollbar-thumb-color, #888) transparent;
+}
+
+.notes::-webkit-scrollbar {
+  width: 10px;
+}
+
+.notes::-webkit-scrollbar-thumb {
+  background-color: var(--joplin-scrollbar-thumb-color, #888);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.notes::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .note-list-item-wrapper {
