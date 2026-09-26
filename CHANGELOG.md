@@ -14,6 +14,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - **New note** from All notebooks (or after clearing a search) scopes the panel to the notebook where the note was created and selects it in the list
 - Panel result list scrolls with mouse wheel / scrollbar again (layout pinned to the webview viewport)
 - Clicking a notebook in Joplin's sidebar clears the panel search box and shows the full notebook listing
+- **⌘M** / **Ctrl+M** (Move) and **⌘T** / **Ctrl+T** (Tags) work when the note title has focus, via Tools menu commands (Joplin only delivered `moveToFolder` from the note body)
 
 ### Planned
 

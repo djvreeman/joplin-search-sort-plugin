@@ -169,6 +169,46 @@ async function executeSearch(state: SearchUiState) {
 	};
 }
 
+async function registerGlobalNoteShortcuts(): Promise<void> {
+	// Joplin only delivers keymap shortcuts for moveToFolder/setTags when the
+	// note body (CodeMirror) has focus — not the title field. Putting them on a
+	// menu with accelerators makes Electron handle Cmd/Ctrl+M and Cmd/Ctrl+T
+	// globally (see laurent22/joplin#6063).
+	await joplin.commands.register({
+		name: 'searchSortMoveToNotebook',
+		label: 'Move note to notebook',
+		execute: async () => {
+			const ids = await joplin.workspace.selectedNoteIds();
+			if (!ids.length) return;
+			await joplin.commands.execute('moveToFolder', ids);
+		},
+	});
+
+	await joplin.commands.register({
+		name: 'searchSortSetTags',
+		label: 'Tags',
+		execute: async () => {
+			const ids = await joplin.workspace.selectedNoteIds();
+			if (!ids.length) return;
+			await joplin.commands.execute('setTags', ids);
+		},
+	});
+
+	await joplin.views.menuItems.create(
+		'searchSortMoveToNotebookMenu',
+		'searchSortMoveToNotebook',
+		'tools',
+		{ accelerator: 'CmdOrCtrl+M' },
+	);
+
+	await joplin.views.menuItems.create(
+		'searchSortSetTagsMenu',
+		'searchSortSetTags',
+		'tools',
+		{ accelerator: 'CmdOrCtrl+T' },
+	);
+}
+
 async function registerContextMenuCommands(): Promise<void> {
 	await joplin.commands.register({
 		name: 'searchSortCopyMarkdownLink',
@@ -215,6 +255,7 @@ joplin.plugins.register({
 	onStart: async function() {
 		await registerSettings(joplin);
 		await registerContextMenuCommands();
+		await registerGlobalNoteShortcuts();
 
 		const runtime = await readRuntimeSettings(joplin);
 		const sidebarFolder = await sidebarFolderContext();
