@@ -18,6 +18,7 @@
   }
 
   const FOLDER_POLL_GRACE_MS = 3000;
+  const NOTE_OPEN_FOLDER_SUPPRESS_MS = 3000;
 
   const state = {
     textQuery: '',
@@ -40,6 +41,7 @@
     folderPollGraceUntil: 0,
     folderPollBaselineReady: false,
     startupComplete: false,
+    pendingNoteOpen: null,
   };
 
   let queryInput;
@@ -266,6 +268,40 @@
   const NOTE_EVENT_CREATE = 1;
   const NOTE_EVENT_DELETE = 3;
 
+  function resolveOpenedNoteFolderChange(input) {
+    const pending = input.pending;
+    if (!pending || !input.hasTextQuery) {
+      return { ignore: false, pending: null };
+    }
+
+    const reachedNotebook = !pending.notebookId || input.folderId === pending.notebookId;
+    const selectionMoved = !!input.selectedNoteId && input.selectedNoteId !== pending.noteId;
+    // A different note in a different notebook is a sidebar click. A different
+    // note in the opened note's notebook is still Joplin following that open.
+    if (selectionMoved && !reachedNotebook) {
+      return { ignore: false, pending: null };
+    }
+
+    if (!reachedNotebook && input.now > pending.until) {
+      return { ignore: false, pending: null };
+    }
+
+    return {
+      ignore: true,
+      pending: reachedNotebook ? null : pending,
+    };
+  }
+
+  function markNoteOpenedFromList(noteId) {
+    if (!(state.textQuery || '').trim() || !noteId) return;
+    const row = state.rows.find(r => r.id === noteId);
+    state.pendingNoteOpen = {
+      noteId,
+      notebookId: row?.notebookId || null,
+      until: Date.now() + NOTE_OPEN_FOLDER_SUPPRESS_MS,
+    };
+  }
+
   function decideNoteListingMembership(meta, eventType) {
     if (eventType === NOTE_EVENT_DELETE) return 'deleted';
     if (!meta) return 'inconclusive';
@@ -371,6 +407,7 @@
         : null;
       state.selectedNoteId = nextId;
       if (nextId) {
+        markNoteOpenedFromList(nextId);
         webviewApi.postMessage({ type: 'openNote', payload: { noteId: nextId } });
       }
     } else if (state.selectedNoteId === noteId) {
@@ -673,6 +710,7 @@
     const opts = options || {};
     if (!noteId) return;
     state.selectedNoteId = noteId;
+    markNoteOpenedFromList(noteId);
     renderRows();
     scrollSelectedIntoView();
     if (opts.focusRow) focusSelectedRow();
@@ -685,6 +723,7 @@
     // Match Joplin: right-click selects the note before showing the menu.
     if (state.selectedNoteId !== noteId) {
       state.selectedNoteId = noteId;
+      markNoteOpenedFromList(noteId);
       renderRows();
       await webviewApi.postMessage({ type: 'openNote', payload: { noteId } });
     }
@@ -1022,6 +1061,23 @@
           state.folderPollBaselineReady = true;
           state.lastPolledFolderId = folder.folderId;
         } else {
+          const opened = resolveOpenedNoteFolderChange({
+            pending: state.pendingNoteOpen,
+            folderId: folder.folderId,
+            selectedNoteId: folder.selectedNoteId || null,
+            now,
+            hasTextQuery: !!(state.textQuery || '').trim(),
+          });
+          state.pendingNoteOpen = opened.pending;
+          if (opened.ignore) {
+            // Joplin selected this note's notebook because we opened it from
+            // the result list. Keep the query so the user can move through matches.
+            if (!state.pendingNoteOpen) {
+              state.lastPolledFolderId = folder.folderId;
+            }
+            return;
+          }
+
           state.lastPolledFolderId = folder.folderId;
           if (folder.selectedNoteId) {
             state.selectedNoteId = folder.selectedNoteId;

@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Opening a search result keeps the query and result list active (including `tag:"…"` searches). Joplin selects the note's notebook when the note opens; that folder change is no longer treated as a sidebar click. Clicking a different notebook in the sidebar still clears the search.
+
 ### Changed
 
 - **Maximum notes to load** setting label clarifies that `0` uses the default 5,000-note cap (not unlimited); status line explains how to raise the limit when capped

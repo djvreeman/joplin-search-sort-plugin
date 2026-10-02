@@ -5,6 +5,8 @@ import {
   nextNoteIdAfterRemoval,
   noteIdAtOffset,
   NOTE_EVENT_DELETE,
+  resolveOpenedNoteFolderChange,
+  type PendingNoteOpen,
 } from '../listNavigation';
 
 test('nextNoteIdAfterRemoval selects following note in current list order', () => {
@@ -134,4 +136,86 @@ test('decideNoteListingMembership never leaves on parent change when browsing al
     }),
     'stay',
   );
+});
+
+function pendingOpen(overrides: Partial<PendingNoteOpen> = {}): PendingNoteOpen {
+  return {
+    noteId: 'note-1',
+    notebookId: 'cars',
+    until: 1_000,
+    ...overrides,
+  };
+}
+
+test('resolveOpenedNoteFolderChange keeps a text search when the opened note folder is selected', () => {
+  const result = resolveOpenedNoteFolderChange({
+    pending: pendingOpen(),
+    folderId: 'cars',
+    selectedNoteId: 'note-1',
+    now: 500,
+    hasTextQuery: true,
+  });
+  assert.equal(result.ignore, true);
+  assert.equal(result.pending, null);
+});
+
+test('resolveOpenedNoteFolderChange waits when Joplin has not reached the note notebook yet', () => {
+  const pending = pendingOpen();
+  const result = resolveOpenedNoteFolderChange({
+    pending,
+    folderId: 'inbox',
+    selectedNoteId: 'note-1',
+    now: 500,
+    hasTextQuery: true,
+  });
+  assert.equal(result.ignore, true);
+  assert.equal(result.pending, pending);
+});
+
+test('resolveOpenedNoteFolderChange applies a non-matching folder after the open window', () => {
+  const result = resolveOpenedNoteFolderChange({
+    pending: pendingOpen(),
+    folderId: 'inbox',
+    selectedNoteId: null,
+    now: 5_000,
+    hasTextQuery: true,
+  });
+  assert.equal(result.ignore, false);
+  assert.equal(result.pending, null);
+});
+
+test('resolveOpenedNoteFolderChange keeps the search when the folder matches even if selection lags', () => {
+  const result = resolveOpenedNoteFolderChange({
+    pending: pendingOpen(),
+    folderId: 'cars',
+    selectedNoteId: 'other-note',
+    now: 500,
+    hasTextQuery: true,
+  });
+  assert.equal(result.ignore, true);
+  assert.equal(result.pending, null);
+});
+
+test('resolveOpenedNoteFolderChange follows a sidebar click to a different note', () => {
+  const result = resolveOpenedNoteFolderChange({
+    pending: pendingOpen(),
+    folderId: 'archive',
+    selectedNoteId: 'other-note',
+    now: 500,
+    hasTextQuery: true,
+  });
+  assert.equal(result.ignore, false);
+  assert.equal(result.pending, null);
+});
+
+test('resolveOpenedNoteFolderChange does not block folder browsing when there is no text query', () => {
+  const result = resolveOpenedNoteFolderChange({
+    pending: pendingOpen(),
+    folderId: 'cars',
+    selectedNoteId: 'note-1',
+    now: 500,
+    hasTextQuery: false,
+  });
+  assert.equal(result.ignore, false);
+  assert.equal(result.pending, null);
 });

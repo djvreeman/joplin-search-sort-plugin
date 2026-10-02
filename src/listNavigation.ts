@@ -42,6 +42,56 @@ export function noteIdAtOffset(
 /** Joplin ItemChangeEventType */
 export const NOTE_EVENT_DELETE = 3;
 
+/**
+ * Set when the panel opens a note from the current result list.
+ * `until` bounds how long a not-yet-matching folder is ignored, so a later
+ * sidebar click is not swallowed.
+ */
+export interface PendingNoteOpen {
+  noteId: string;
+  notebookId: string | null;
+  until: number;
+}
+
+/**
+ * Opening a listed note makes Joplin select that note's notebook. That folder
+ * change is not a sidebar click and must not clear an active text search.
+ *
+ * Ignore while the new folder is that note's notebook, or while the opened
+ * note is still selected and the window has not expired. Drop `pending` once
+ * the folder matches. A different note in a different notebook — or a
+ * non-matching folder after the window — is a real sidebar navigation.
+ */
+export function resolveOpenedNoteFolderChange(input: {
+  pending: PendingNoteOpen | null;
+  folderId: string | null;
+  selectedNoteId: string | null;
+  now: number;
+  hasTextQuery: boolean;
+}): { ignore: boolean; pending: PendingNoteOpen | null } {
+  const pending = input.pending;
+  if (!pending || !input.hasTextQuery) {
+    return { ignore: false, pending: null };
+  }
+
+  const reachedNotebook = !pending.notebookId || input.folderId === pending.notebookId;
+  const selectionMoved = !!input.selectedNoteId && input.selectedNoteId !== pending.noteId;
+  // A different note in a different notebook is a sidebar click. A different
+  // note in the opened note's notebook is still Joplin following that open.
+  if (selectionMoved && !reachedNotebook) {
+    return { ignore: false, pending: null };
+  }
+
+  if (!reachedNotebook && input.now > pending.until) {
+    return { ignore: false, pending: null };
+  }
+
+  return {
+    ignore: true,
+    pending: reachedNotebook ? null : pending,
+  };
+}
+
 export type NoteListingDecision = 'stay' | 'left_scope' | 'deleted' | 'inconclusive';
 
 /**
