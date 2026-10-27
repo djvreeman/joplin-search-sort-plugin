@@ -126,6 +126,29 @@ test('decideNoteListingMembership treats soft-delete as deleted when browsing al
   );
 });
 
+test('decideNoteListingMembership keeps conflict copies whose parent is the original notebook', () => {
+  assert.equal(
+    decideNoteListingMembership({
+      scopedNotebookId: 'c04f1c7c04f1c7c04f1c7c04f1c7c04f',
+      searchAllNotebooks: false,
+      meta: { parentId: 'travel', isConflict: true },
+      eventType: 2,
+      listKind: 'noteConflicts',
+    }),
+    'stay',
+  );
+  assert.equal(
+    decideNoteListingMembership({
+      scopedNotebookId: 'c04f1c7c04f1c7c04f1c7c04f1c7c04f',
+      searchAllNotebooks: false,
+      meta: { parentId: 'travel', isConflict: false },
+      eventType: 2,
+      listKind: 'noteConflicts',
+    }),
+    'left_scope',
+  );
+});
+
 test('decideNoteListingMembership never leaves on parent change when browsing all notebooks', () => {
   assert.equal(
     decideNoteListingMembership({
@@ -203,6 +226,32 @@ test('resolveOpenedNoteFolderChange follows a sidebar click to a different note'
     selectedNoteId: 'other-note',
     now: 500,
     hasTextQuery: true,
+  });
+  assert.equal(result.ignore, false);
+  assert.equal(result.pending, null);
+});
+
+test('resolveOpenedNoteFolderChange holds the conflict list when Joplin follows the copy home', () => {
+  const result = resolveOpenedNoteFolderChange({
+    pending: pendingOpen(),
+    folderId: 'cars',
+    selectedNoteId: 'note-1',
+    now: 500,
+    hasTextQuery: false,
+    holdList: true,
+  });
+  assert.equal(result.ignore, true);
+});
+
+test('resolveOpenedNoteFolderChange forceApply enters Conflicts during that hold', () => {
+  const result = resolveOpenedNoteFolderChange({
+    pending: pendingOpen(),
+    folderId: 'c04f1c7c04f1c7c04f1c7c04f1c7c04f',
+    selectedNoteId: 'note-1',
+    now: 500,
+    hasTextQuery: false,
+    holdList: true,
+    forceApply: true,
   });
   assert.equal(result.ignore, false);
   assert.equal(result.pending, null);

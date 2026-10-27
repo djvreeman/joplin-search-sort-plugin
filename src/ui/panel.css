@@ -159,6 +159,54 @@ body {
   background-color: var(--joplin-background-color-hover);
 }
 
+.conflict-banner,
+.conflict-actions {
+  flex: 0 0 auto;
+  margin: 0 8px 8px;
+}
+
+.conflict-banner {
+  padding: 8px 10px;
+  border-radius: 4px;
+  background-color: var(--joplin-background-color4);
+  color: var(--joplin-color);
+  font-size: calc(var(--joplin-font-size) - 1px);
+  line-height: 1.4;
+}
+
+.conflict-summary {
+  margin-bottom: 6px;
+  color: var(--joplin-color);
+  font-size: calc(var(--joplin-font-size) - 1px);
+  line-height: 1.4;
+}
+
+.conflict-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.btn-quiet {
+  border: 1px solid var(--joplin-divider-color);
+  background: transparent;
+  color: var(--joplin-color);
+}
+
+.btn-quiet:hover:not(:disabled) {
+  background-color: var(--joplin-background-color-hover3);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.is-hidden,
+[hidden] {
+  display: none !important;
+}
+
 .search-input > .field {
   box-sizing: border-box;
   width: 100%;
@@ -359,6 +407,8 @@ body {
 .note-list-item-wrapper > .row {
   min-height: 34px;
   cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
   color: var(--joplin-color, #dddddd);
   font-family: var(--joplin-font-family, sans-serif);
   font-size: var(--joplin-font-size, 13px);

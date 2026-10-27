@@ -30,6 +30,7 @@ export interface PanelInitPayload extends PanelStatePayload {
 	dateFormat: string;
 	timeFormat: string;
 	notesColumns: unknown;
+	listKind?: 'notes' | 'noteConflicts' | 'attachmentConflicts';
 }
 
 export interface NotesParentSelection {

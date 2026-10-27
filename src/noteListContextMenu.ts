@@ -24,12 +24,45 @@ export interface NoteContextMenuInput {
 	syncTarget?: number;
 }
 
+/** Runs the Joplin command, then asks the panel to reload the note list. */
+export const DISPATCH_NOTE_COMMAND = 'searchSortDispatchNoteCommand';
+
+const LIST_MUTATING_COMMANDS = new Set([
+	'setTags',
+	'toggleNoteType',
+	'searchSortSwitchToNoteType',
+	'moveToFolder',
+	'duplicateNote',
+	'deleteNote',
+	'convertNoteToMarkdown',
+	'restoreNote',
+	'permanentlyDeleteNote',
+]);
+
 function item(
 	label: string,
 	command: string,
 	commandArgs: MenuTemplateItem['commandArgs'] = [],
 ): MenuTemplateItem {
+	if (LIST_MUTATING_COMMANDS.has(command)) {
+		return {
+			label,
+			command: DISPATCH_NOTE_COMMAND,
+			commandArgs: [command, ...commandArgs],
+		};
+	}
 	return { label, command, commandArgs };
+}
+
+/** Joplin command a menu row will run (unwraps the list-refresh dispatcher). */
+export function invokedNoteCommand(menuItem: MenuTemplateItem): string {
+	if (
+		menuItem.command === DISPATCH_NOTE_COMMAND
+		&& typeof menuItem.commandArgs?.[0] === 'string'
+	) {
+		return menuItem.commandArgs[0];
+	}
+	return menuItem.command || '';
 }
 
 /**

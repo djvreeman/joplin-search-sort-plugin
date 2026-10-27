@@ -68,9 +68,17 @@ export function resolveOpenedNoteFolderChange(input: {
   selectedNoteId: string | null;
   now: number;
   hasTextQuery: boolean;
+  /** Keep the current list when Joplin follows an opened note into its notebook. */
+  holdList?: boolean;
+  /** Sidebar target that must always be applied (the virtual Conflicts folder). */
+  forceApply?: boolean;
 }): { ignore: boolean; pending: PendingNoteOpen | null } {
+  if (input.forceApply) {
+    return { ignore: false, pending: null };
+  }
+
   const pending = input.pending;
-  if (!pending || !input.hasTextQuery) {
+  if (!pending || (!input.hasTextQuery && !input.holdList)) {
     return { ignore: false, pending: null };
   }
 
@@ -102,8 +110,10 @@ export type NoteListingDecision = 'stay' | 'left_scope' | 'deleted' | 'inconclus
 export function decideNoteListingMembership(input: {
   scopedNotebookId: string | null;
   searchAllNotebooks: boolean;
-  meta: { parentId: string; deletedTime?: number } | null;
+  meta: { parentId: string; deletedTime?: number; isConflict?: boolean } | null;
   eventType?: number | null;
+  /** Conflict copies keep the original notebook as parent_id. */
+  listKind?: 'notes' | 'noteConflicts' | 'attachmentConflicts';
 }): NoteListingDecision {
   // Explicit delete events always leave the listing (hard or soft delete).
   if (input.eventType === NOTE_EVENT_DELETE) return 'deleted';
@@ -114,6 +124,11 @@ export function decideNoteListingMembership(input: {
 
   // Soft-deleted notes stay in the DB with parent_id; exclude them from the list.
   if (input.meta.deletedTime) return 'deleted';
+
+  // Conflict copies are listed by is_conflict, not by the virtual folder id.
+  if (input.listKind === 'noteConflicts') {
+    return input.meta.isConflict ? 'stay' : 'left_scope';
+  }
 
   // No notebook scope: in-place edits never imply "moved out".
   if (input.searchAllNotebooks || !input.scopedNotebookId) {

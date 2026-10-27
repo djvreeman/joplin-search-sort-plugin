@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
 	buildNoteListContextMenu,
+	DISPATCH_NOTE_COMMAND,
 	externalLinkForNote,
+	invokedNoteCommand,
 	MARKUP_LANGUAGE_HTML,
 	markdownLinkForNote,
 } from '../noteListContextMenu';
@@ -22,7 +24,7 @@ test('buildNoteListContextMenu includes standard actions for a normal note', () 
 		syncTarget: 0,
 	});
 
-	const commands = items.map(i => i.command);
+	const commands = items.map(invokedNoteCommand);
 	assert.ok(commands.includes('openNoteInNewWindow'));
 	assert.ok(commands.includes('setTags'));
 	assert.ok(commands.includes('moveToFolder'));
@@ -31,6 +33,10 @@ test('buildNoteListContextMenu includes standard actions for a normal note', () 
 	assert.ok(commands.includes('searchSortCopyMarkdownLink'));
 	assert.ok(commands.includes('searchSortCopyExternalLink'));
 	assert.ok(commands.includes('exportPdf'));
+
+	const deleteItem = items.find(i => invokedNoteCommand(i) === 'deleteNote');
+	assert.equal(deleteItem?.command, DISPATCH_NOTE_COMMAND);
+	assert.deepEqual(deleteItem?.commandArgs?.[1], ['note-1']);
 });
 
 test('buildNoteListContextMenu adds convert and share when applicable', () => {
@@ -39,7 +45,7 @@ test('buildNoteListContextMenu adds convert and share when applicable', () => {
 		notes: [{ ...baseNote, markup_language: MARKUP_LANGUAGE_HTML }],
 		syncTarget: 9,
 	});
-	assert.ok(htmlItems.some(i => i.command === 'convertNoteToMarkdown'));
+	assert.ok(htmlItems.some(i => invokedNoteCommand(i) === 'convertNoteToMarkdown'));
 	assert.ok(htmlItems.some(i => i.command === 'showShareNoteDialog'));
 });
 
@@ -48,8 +54,9 @@ test('buildNoteListContextMenu uses trash actions for deleted notes', () => {
 		noteIds: ['note-1'],
 		notes: [{ ...baseNote, deleted_time: 123 }],
 	});
-	const commands = items.map(i => i.command);
+	const commands = items.map(invokedNoteCommand);
 	assert.deepEqual(commands, ['restoreNote', 'permanentlyDeleteNote']);
+	assert.ok(items.every(i => i.command === DISPATCH_NOTE_COMMAND));
 });
 
 test('buildNoteListContextMenu uses separate switch commands for multi-select', () => {
@@ -60,7 +67,7 @@ test('buildNoteListContextMenu uses separate switch commands for multi-select', 
 			{ ...baseNote, id: 'b' },
 		],
 	});
-	const commands = items.map(i => i.command);
+	const commands = items.map(invokedNoteCommand);
 	assert.ok(commands.includes('searchSortSwitchToNoteType'));
 	assert.equal(commands.filter(c => c === 'searchSortSwitchToNoteType').length, 2);
 });

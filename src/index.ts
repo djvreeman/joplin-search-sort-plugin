@@ -11,9 +11,21 @@ import { registerSettings, readRuntimeSettings, SETTINGS } from './settings';
 import { buildEffectiveQuery, type NotebookScope } from './searchQuery';
 import {
 	buildNoteListContextMenu,
+	DISPATCH_NOTE_COMMAND,
 	externalLinkForNote,
 	markdownLinkForNote,
 } from './noteListContextMenu';
+import {
+	CONFLICT_FOLDER_ID,
+	describeAttachmentConflict,
+	isConflictFolderId,
+	listConflictNotes,
+	listKindForFolder,
+	resolveConflictNote,
+	resolveSidebarSelection,
+	type ConflictResolveAction,
+	type ListKind,
+} from './conflicts';
 
 interface SearchUiState {
 	textQuery: string;
@@ -21,6 +33,7 @@ interface SearchUiState {
 	searchAllNotebooks: boolean;
 	sortField: SortField;
 	sortDirection: SortDirection;
+	listKind?: ListKind;
 }
 
 const PANEL_ID = 'advancedSearchSortPanel';
@@ -54,6 +67,17 @@ const PANEL_HTML = `
           <button id="clearScopeBtn" class="scope-chip-clear" type="button" aria-label="Search all notebooks">×</button>
         </span>
       </div>
+      <div id="conflictBanner" class="conflict-banner" hidden></div>
+      <div id="conflictActions" class="conflict-actions" hidden>
+        <div id="conflictSummary" class="conflict-summary"></div>
+        <div id="conflictOriginalLinks" class="conflict-buttons" hidden></div>
+        <div class="conflict-buttons">
+          <button id="conflictOpenCopyBtn" class="btn btn-quiet" type="button">Open copy</button>
+          <button id="conflictOpenOriginalBtn" class="btn btn-quiet" type="button">Open original</button>
+          <button id="conflictKeepBtn" class="btn btn-quiet" type="button">Keep original</button>
+          <button id="conflictUseCopyBtn" class="btn btn-quiet" type="button">Use this copy</button>
+        </div>
+      </div>
       <div id="statusLine" class="status">Ready.</div>
       <div id="headerRow" class="note-list-header"></div>
       <div id="resultsBody" class="notes"></div>
@@ -66,22 +90,33 @@ async function selectedNoteId(): Promise<string | null> {
 	return ids.length ? ids[0] : null;
 }
 
-async function sidebarFolderContext(): Promise<{ folderId: string | null; folderTitle: string }> {
+async function sidebarFolderContext(): Promise<{ folderId: string | null; folderTitle: string; listKind: ListKind }> {
 	const notesParentFolderId = folderIdFromNotesParent(await joplin.settings.globalValue('notesParent'));
-	const folderId = notesParentFolderId || await joplin.settings.globalValue('activeFolderId');
-	if (!folderId) {
-		return { folderId: null, folderTitle: '' };
+	const activeFolderId = await joplin.settings.globalValue('activeFolderId');
+	let selectedFolderId: string | null = null;
+	let selectedFolderTitle: string | null = null;
+	try {
+		const folder = await joplin.workspace.selectedFolder();
+		selectedFolderId = folder?.id || null;
+		selectedFolderTitle = folder?.title || null;
+	} catch {
+		selectedFolderId = null;
+		selectedFolderTitle = null;
 	}
 
-	const folder = await joplin.workspace.selectedFolder();
-	return {
-		folderId,
-		folderTitle: folder?.title || '(Untitled notebook)',
-	};
+	return resolveSidebarSelection({
+		notesParentId: notesParentFolderId,
+		activeFolderId: typeof activeFolderId === 'string' ? activeFolderId : null,
+		selectedFolderId,
+		selectedFolderTitle,
+	});
 }
 
 async function notebookScopeFromId(notebookId: string): Promise<NotebookScope | null> {
 	if (!notebookId) return null;
+	if (isConflictFolderId(notebookId)) {
+		return { id: CONFLICT_FOLDER_ID, title: 'Conflicts' };
+	}
 	try {
 		const folder = await joplin.data.get(['folders', notebookId], { fields: ['id', 'title'] });
 		if (!folder?.id) return null;
@@ -109,8 +144,14 @@ async function buildStatePayload(): Promise<PanelInitPayload> {
 		};
 	}
 
+	const panelState = buildPanelState(runtime, sidebarFolder, restoredNotebook);
+	const listKind = panelState.searchAllNotebooks
+		? 'notes'
+		: listKindForFolder(panelState.notebookScope?.id || null, panelState.notebookScope?.title || '');
+
 	return {
-		...buildPanelState(runtime, sidebarFolder, restoredNotebook),
+		...panelState,
+		listKind,
 		selectedNoteId: await selectedNoteId(),
 		dateFormat: await joplin.settings.globalValue('dateFormat'),
 		timeFormat: await joplin.settings.globalValue('timeFormat'),
@@ -135,11 +176,19 @@ async function persistUiState(state: SearchUiState): Promise<void> {
 async function executeSearch(state: SearchUiState) {
 	const settings = await readRuntimeSettings(joplin);
 	const textQuery = state.textQuery.trim();
+	const noteConflicts = state.listKind === 'noteConflicts'
+		|| isConflictFolderId(state.notebookScope?.id);
 
-	// Empty-query notebook browsing uses the folder data API so brand-new notes
-	// appear immediately (Joplin's search index can lag behind creates).
-	const response =
-		state.notebookScope?.id && !state.searchAllNotebooks && !textQuery
+	// Conflict copies are not children of the virtual Conflicts folder.
+	// Joplin search also omits is_conflict notes, so filter the conflict list.
+	const response = noteConflicts && !state.searchAllNotebooks
+		? await listConflictNotes(joplin, {
+				sortField: state.sortField,
+				sortDirection: state.sortDirection,
+				maxResults: settings.maxResults,
+				textQuery,
+			})
+		: state.notebookScope?.id && !state.searchAllNotebooks && !textQuery
 			? await listFolderNotes(joplin, {
 					folderId: state.notebookScope.id,
 					sortField: state.sortField,
@@ -162,8 +211,16 @@ async function executeSearch(state: SearchUiState) {
 		payload: {
 			...response,
 			textQuery: state.textQuery,
-			notebookScope: state.notebookScope,
+			notebookScope: noteConflicts
+				? {
+						id: CONFLICT_FOLDER_ID,
+						title: isConflictFolderId(state.notebookScope?.id) && state.notebookScope?.title
+							? state.notebookScope.title
+							: 'Conflicts',
+					}
+				: state.notebookScope,
 			searchAllNotebooks: state.searchAllNotebooks,
+			listKind: noteConflicts ? 'noteConflicts' : (state.listKind || 'notes'),
 			selectedNoteId: await selectedNoteId(),
 		},
 	};
@@ -268,6 +325,31 @@ joplin.plugins.register({
 		const panel = await joplin.views.panels.create(PANEL_ID);
 		await joplin.views.panels.setHtml(panel, buildPanelHtml(PANEL_HTML, bootstrap));
 
+		async function notifyListingChanged(command: string, args: unknown[]): Promise<void> {
+			const noteIdsArg = args.find(arg => Array.isArray(arg));
+			const noteIds = Array.isArray(noteIdsArg)
+				? noteIdsArg.filter((id): id is string => typeof id === 'string' && !!id)
+				: [];
+			await joplin.views.panels.postMessage(panel, {
+				type: 'notesMayHaveChanged',
+				payload: { command, noteIds },
+			});
+		}
+
+		// Context-menu actions go through here so the panel reloads after delete, move, tags, etc.
+		// Joplin's onNoteChange only reports notes in its own selection, not a panel multi-select.
+		await joplin.commands.register({
+			name: DISPATCH_NOTE_COMMAND,
+			execute: async (command: string, ...args: unknown[]) => {
+				if (typeof command !== 'string' || !command) return;
+				try {
+					await joplin.commands.execute(command, ...args);
+				} finally {
+					await notifyListingChanged(command, args);
+				}
+			},
+		});
+
 		await joplin.views.panels.onMessage(panel, async (message: any) => {
 			if (!message || !message.type) return;
 
@@ -282,6 +364,7 @@ joplin.plugins.register({
 					payload: {
 						folderId: folder.folderId,
 						folderTitle: folder.folderTitle,
+						listKind: folder.listKind,
 						selectedNoteId: await selectedNoteId(),
 					},
 				};
@@ -299,6 +382,7 @@ joplin.plugins.register({
 							'updated_time',
 							'created_time',
 							'deleted_time',
+							'is_conflict',
 						],
 					});
 					if (!note?.id) return { type: 'noteMeta', payload: null };
@@ -325,6 +409,7 @@ joplin.plugins.register({
 							updatedTime: note.updated_time || 0,
 							createdTime: note.created_time || 0,
 							deletedTime: note.deleted_time || 0,
+							isConflict: !!note.is_conflict,
 						},
 					};
 				} catch {
@@ -343,31 +428,89 @@ joplin.plugins.register({
 			}
 
 			if (message.type === 'openNote') {
-				await joplin.commands.execute('openNote', message.payload.noteId);
-				return {
-					type: 'selectionChanged',
-					payload: { noteId: message.payload.noteId },
-				};
+				const noteId = typeof message.payload?.noteId === 'string' ? message.payload.noteId : '';
+				if (!noteId) return { ok: false, message: 'Missing note' };
+				try {
+					const note = await joplin.data.get(['notes', noteId], { fields: ['id'] });
+					if (!note?.id) return { ok: false, message: 'That item is not a note Joplin can open.' };
+					await joplin.commands.execute('openNote', noteId);
+					return { ok: true, type: 'selectionChanged', payload: { noteId } };
+				} catch (error) {
+					const err = error instanceof Error ? error : new Error(String(error));
+					return { ok: false, message: err.message };
+				}
+			}
+
+			if (message.type === 'getAttachmentConflict') {
+				const noteId = typeof message.payload?.noteId === 'string' ? message.payload.noteId : '';
+				if (!noteId) return { ok: false, message: 'Missing note' };
+				try {
+					const details = await describeAttachmentConflict(joplin, noteId);
+					return { ok: true, payload: details };
+				} catch (error) {
+					const err = error instanceof Error ? error : new Error(String(error));
+					return { ok: false, message: err.message };
+				}
+			}
+
+			if (message.type === 'openNoteInNewWindow') {
+				const noteId = message.payload?.noteId;
+				if (!noteId) return { ok: false, message: 'Missing note' };
+				try {
+					await joplin.commands.execute('openNoteInNewWindow', noteId);
+					return { ok: true };
+				} catch (error) {
+					const err = error instanceof Error ? error : new Error(String(error));
+					try {
+						await joplin.commands.execute('openNote', noteId);
+						return { ok: true, followedInPlace: true };
+					} catch {
+						return { ok: false, message: err.message };
+					}
+				}
+			}
+
+			if (message.type === 'resolveConflict') {
+				const noteId = message.payload?.noteId;
+				const action = message.payload?.action as ConflictResolveAction;
+				if (!noteId || (action !== 'keepOriginal' && action !== 'useCopy')) {
+					return { ok: false, message: 'Missing conflict action' };
+				}
+				try {
+					const result = await resolveConflictNote(joplin, noteId, action);
+					return { ok: true, message: result.message };
+				} catch (error) {
+					const err = error instanceof Error ? error : new Error(String(error));
+					console.error('Advanced Search Sort failed to resolve conflict:', err);
+					return { ok: false, message: err.message };
+				}
 			}
 
 			if (message.type === 'runNoteCommand') {
-				const noteId = message.payload?.noteId;
 				const command = message.payload?.command;
-				if (!noteId || typeof command !== 'string') {
+				const noteIds = Array.isArray(message.payload?.noteIds)
+					? message.payload.noteIds.filter((id: unknown) => typeof id === 'string' && id)
+					: [];
+				const noteId = noteIds[0]
+					|| (typeof message.payload?.noteId === 'string' ? message.payload.noteId : '');
+				const targetIds = noteIds.length ? noteIds : (noteId ? [noteId] : []);
+				if (!targetIds.length || typeof command !== 'string') {
 					return { ok: false, message: 'Missing note or command' };
 				}
 
 				try {
 					const current = await selectedNoteId();
-					if (current !== noteId) {
-						await joplin.commands.execute('openNote', noteId);
+					if (targetIds.length === 1 && current !== targetIds[0]) {
+						await joplin.commands.execute('openNote', targetIds[0]);
 					}
-					await joplin.commands.execute(command, [noteId]);
+					await joplin.commands.execute(command, targetIds);
 					return { ok: true };
 				} catch (error) {
 					const err = error instanceof Error ? error : new Error(String(error));
 					console.error(`Advanced Search Sort failed to run ${command}:`, err);
 					return { ok: false, message: err.message };
+				} finally {
+					await notifyListingChanged(command, [targetIds]);
 				}
 			}
 
@@ -417,6 +560,12 @@ joplin.plugins.register({
 					typeof message.payload?.notebookId === 'string' && message.payload.notebookId
 						? message.payload.notebookId
 						: null;
+				if (isConflictFolderId(notebookId)) {
+					return {
+						type: 'noteCreated',
+						payload: { noteId: null, message: 'Notes cannot be created in Conflicts.' },
+					};
+				}
 				try {
 					let noteId: string | null = null;
 					if (notebookId) {

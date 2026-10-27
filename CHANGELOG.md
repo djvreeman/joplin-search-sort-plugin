@@ -7,8 +7,22 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Planned
+
+- Publish to the Joplin plugin repository (npm) for in-app **Update**
+
+## [0.3.0] - 2026-10-27
+
+### Added
+
+- Conflicts shows the sync copies and how to finish them. Each row names the notebook that still has the other version. Select a copy, then **Open copy**, **Open original** (new window), **Keep original**, or **Use this copy**.
+- Attachment conflicts explain that each row is a spare copy of a file. Joplin keeps one version on the original note and does not link it to this spare. The panel looks up notes that still mention that file and can open them in a new window. **Open this copy** shows the spare file. **Delete this copy** removes only the spare.
+- Note list supports the usual multi-select gestures: Command-click (Ctrl-click on Windows and Linux) toggles a note, Shift-click selects the range, and Shift+Up/Down extends the selection. Context menu, Move, and Tags apply to every selected note.
+
 ### Fixed
 
+- Clicking **Conflicts** no longer leaves the previous notebook on screen. Those copies are not stored in that folder; Joplin marks them with `is_conflict`, and the list now loads those notes.
+- Deleting, moving, tagging, duplicating, or otherwise changing notes from the list reloads the results. Joplin only reports changes for the single note it has open, so the other selected notes were left on screen.
 - Opening a search result keeps the query and result list active (including `tag:"…"` searches). Joplin selects the note's notebook when the note opens; that folder change is no longer treated as a sidebar click. Clicking a different notebook in the sidebar still clears the search.
 
 ### Changed
@@ -19,10 +33,6 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - Panel result list scrolls with mouse wheel / scrollbar again (layout pinned to the webview viewport)
 - Clicking a notebook in Joplin's sidebar clears the panel search box and shows the full notebook listing
 - **⌘M** / **Ctrl+M** (Move) and **⌘T** / **Ctrl+T** (Tags) work when the note title has focus, via Tools menu commands (Joplin only delivered `moveToFolder` from the note body)
-
-### Planned
-
-- Publish to the Joplin plugin repository (npm) for in-app **Update**
 
 ## [0.2.1] - 2026-08-29
 
@@ -92,7 +102,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - Preserve last query and sort setting
 - Production `.jpl` packaging
 
-[Unreleased]: https://github.com/djvreeman/joplin-search-sort-plugin/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/djvreeman/joplin-search-sort-plugin/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.3.0
 [0.2.1]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.2.1
 [0.2.0]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.2.0
 [0.1.3]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.1.3
