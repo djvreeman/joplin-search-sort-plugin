@@ -11,6 +11,12 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 - Publish to the Joplin plugin repository (npm) for in-app **Update**
 
+## [0.4.0] - 2026-10-29
+
+### Added
+
+- Search includes text recognized from images and PDFs. Joplin skips that OCR text when a query has a filter such as `notebook:` or `tag:`, which is how scoped searches are sent. Those attachment matches are now merged back into the result list.
+
 ## [0.3.0] - 2026-10-27
 
 ### Added
@@ -102,7 +108,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - Preserve last query and sort setting
 - Production `.jpl` packaging
 
-[Unreleased]: https://github.com/djvreeman/joplin-search-sort-plugin/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/djvreeman/joplin-search-sort-plugin/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.4.0
 [0.3.0]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.3.0
 [0.2.1]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.2.1
 [0.2.0]: https://github.com/djvreeman/joplin-search-sort-plugin/releases/tag/v0.2.0

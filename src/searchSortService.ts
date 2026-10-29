@@ -4,6 +4,13 @@ import {
 	effectiveResultLimit,
 	type SortDefaults,
 } from './folderBrowseSort';
+import {
+	allowedFolderIds,
+	noteMatchesAndFilters,
+	ocrSupplementPlan,
+	type FolderRecord,
+	type OcrSupplementPlan,
+} from './ocrSearch';
 
 export type SortField = 'relevance' | 'updated' | 'created' | 'title' | 'notebook';
 export type SortDirection = 'asc' | 'desc';
@@ -99,27 +106,203 @@ export function normalizeMaxResults(maxResults: number): number {
   return Math.floor(maxResults);
 }
 
-async function loadNotebookMap(joplin: any): Promise<Map<string, string>> {
-  const notebookMap = new Map<string, string>();
+async function loadFolders(joplin: any): Promise<FolderRecord[]> {
+  const folders: FolderRecord[] = [];
   let page = 1;
 
   while (true) {
     const result = await joplin.data.get(['folders'], {
-      fields: ['id', 'title'],
+      fields: ['id', 'title', 'parent_id'],
       page,
       limit: MAX_SEARCH_LIMIT,
     });
-    const folders = Array.isArray(result.items) ? result.items : [];
+    const items = Array.isArray(result.items) ? result.items : [];
 
-    for (const folder of folders) {
-      notebookMap.set(folder.id, folder.title || '(Untitled notebook)');
+    for (const folder of items) {
+      folders.push({
+        id: folder.id,
+        title: folder.title || '(Untitled notebook)',
+        parentId: folder.parent_id || '',
+      });
     }
 
     if (!result.has_more) break;
     page += 1;
   }
 
-  return notebookMap;
+  return folders;
+}
+
+function notebookMapFromFolders(folders: FolderRecord[]): Map<string, string> {
+  return new Map(folders.map(folder => [folder.id, folder.title || '(Untitled notebook)']));
+}
+
+const OCR_NOTE_FIELDS = [
+  'id',
+  'title',
+  'created_time',
+  'updated_time',
+  'parent_id',
+  'is_todo',
+  'todo_completed',
+  'todo_due',
+  'user_created_time',
+  'user_updated_time',
+  'latitude',
+  'longitude',
+  'altitude',
+  'source_url',
+];
+
+async function noteIdsForTag(joplin: any, pattern: string): Promise<Set<string>> {
+  const tagIds: string[] = [];
+  let page = 1;
+
+  while (true) {
+    const result = await joplin.data.get(['search'], {
+      query: pattern,
+      type: 'tag',
+      fields: ['id'],
+      limit: MAX_SEARCH_LIMIT,
+      page,
+    });
+    const items = Array.isArray(result.items) ? result.items : [];
+    for (const tag of items) {
+      if (tag?.id) tagIds.push(tag.id);
+    }
+    if (!result.has_more) break;
+    page += 1;
+  }
+
+  const noteIds = new Set<string>();
+  for (const tagId of tagIds) {
+    page = 1;
+    while (true) {
+      const result = await joplin.data.get(['tags', tagId, 'notes'], {
+        fields: ['id'],
+        limit: MAX_SEARCH_LIMIT,
+        page,
+      });
+      const items = Array.isArray(result.items) ? result.items : [];
+      for (const note of items) {
+        if (note?.id) noteIds.add(note.id);
+      }
+      if (!result.has_more) break;
+      page += 1;
+    }
+  }
+
+  return noteIds;
+}
+
+async function applyTagFilters(
+  joplin: any,
+  notes: SearchResultNote[],
+  plan: OcrSupplementPlan,
+): Promise<SearchResultNote[]> {
+  if (!plan.tags.length) return notes;
+
+  let allowed: Set<string> | null = null;
+  for (const filter of plan.tags) {
+    if (filter.negated) continue;
+    const ids = await noteIdsForTag(joplin, filter.pattern);
+    if (!allowed) {
+      allowed = ids;
+      continue;
+    }
+    const next = new Set<string>();
+    for (const id of allowed) {
+      if (ids.has(id)) next.add(id);
+    }
+    allowed = next;
+  }
+
+  for (const filter of plan.tags) {
+    if (!filter.negated) continue;
+    const ids = await noteIdsForTag(joplin, filter.pattern);
+    if (!allowed) allowed = new Set(notes.map(note => note.id));
+    for (const id of ids) allowed.delete(id);
+  }
+
+  const allowedIds = allowed;
+  if (!allowedIds) return notes;
+  return notes.filter(note => allowedIds.has(note.id));
+}
+
+async function noteMatchesVerifyFilters(
+  joplin: any,
+  noteId: string,
+  filters: string[],
+): Promise<boolean> {
+  const result = await joplin.data.get(['search'], {
+    query: [`id:${noteId}`, ...filters].join(' '),
+    fields: ['id'],
+    limit: 10,
+    page: 1,
+  });
+  const items = Array.isArray(result.items) ? result.items : [];
+  return items.some((item: { id?: string }) => item?.id === noteId);
+}
+
+async function applyVerifyFilters(
+  joplin: any,
+  notes: SearchResultNote[],
+  filters: string[],
+): Promise<SearchResultNote[]> {
+  if (!filters.length) return notes;
+
+  const kept: SearchResultNote[] = [];
+  const batchSize = 8;
+  for (let index = 0; index < notes.length; index += batchSize) {
+    const batch = notes.slice(index, index + batchSize);
+    const results = await Promise.all(batch.map(async note => {
+      try {
+        return await noteMatchesVerifyFilters(joplin, note.id, filters) ? note : null;
+      } catch (error) {
+        console.warn('Advanced Search Sort could not check OCR note filters:', error);
+        return null;
+      }
+    }));
+    for (const note of results) {
+      if (note) kept.push(note);
+    }
+  }
+  return kept;
+}
+
+async function ocrMatchNotes(
+  joplin: any,
+  plan: OcrSupplementPlan,
+  folders: FolderRecord[],
+  seenIds: Set<string>,
+  maxResults: number,
+): Promise<{ notes: SearchResultNote[]; truncated: boolean }> {
+  const queries = plan.orMode ? plan.orTextQueries : [plan.textQuery];
+  const byId = new Map<string, SearchResultNote>();
+  let truncated = false;
+
+  for (const textQuery of queries) {
+    const page = await fetchSearchPages(joplin, textQuery, OCR_NOTE_FIELDS, maxResults);
+    if (page.truncated || page.hasMore) truncated = true;
+    for (const item of page.items) {
+      if (!item?.id || seenIds.has(item.id) || byId.has(item.id)) continue;
+      byId.set(item.id, item);
+    }
+  }
+
+  let notes = [...byId.values()];
+  const folderIds = allowedFolderIds(folders, plan.notebooks);
+  if (folderIds) {
+    notes = notes.filter(note => folderIds.has(note.parent_id || ''));
+  }
+
+  if (!plan.orMode) {
+    notes = await applyTagFilters(joplin, notes, plan);
+    notes = notes.filter(note => noteMatchesAndFilters(note, plan));
+    notes = await applyVerifyFilters(joplin, notes, plan.verifyFilters);
+  }
+
+  return { notes, truncated };
 }
 
 async function fetchSearchPages(
@@ -262,7 +445,7 @@ export async function listFolderNotes(joplin: any, request: FolderListRequest): 
     maxResults,
     apiOrder,
   );
-  const notebookMap = await loadNotebookMap(joplin);
+  const notebookMap = notebookMapFromFolders(await loadFolders(joplin));
   const rows = mapNotesToRows(items, notebookMap);
 
   return {
@@ -292,8 +475,37 @@ export async function runSearch(joplin: any, request: SearchRequest): Promise<Se
 
   const noteFields = ['id', 'title', 'created_time', 'updated_time', 'parent_id'];
   const maxResults = normalizeMaxResults(request.maxResults);
-  const { items, hasMore, truncated, resultLimit } = await fetchSearchPages(joplin, query, noteFields, maxResults);
-  const notebookMap = await loadNotebookMap(joplin);
+  const primary = await fetchSearchPages(joplin, query, noteFields, maxResults);
+  const folders = await loadFolders(joplin);
+  let items = primary.items;
+  let hasMore = primary.hasMore;
+  let truncated = primary.truncated;
+
+  const ocrPlan = ocrSupplementPlan(query);
+  if (ocrPlan) {
+    try {
+      const supplement = await ocrMatchNotes(
+        joplin,
+        ocrPlan,
+        folders,
+        new Set(items.map(item => item.id)),
+        maxResults,
+      );
+      if (supplement.notes.length) {
+        items = items.concat(supplement.notes);
+        const targetMax = primary.resultLimit;
+        if (items.length > targetMax) {
+          items.length = targetMax;
+          truncated = true;
+          hasMore = true;
+        }
+      }
+    } catch (error) {
+      console.warn('Advanced Search Sort OCR search failed:', error);
+    }
+  }
+
+  const notebookMap = notebookMapFromFolders(folders);
   const rows = mapNotesToRows(items, notebookMap);
 
   return {
@@ -303,6 +515,6 @@ export async function runSearch(joplin: any, request: SearchRequest): Promise<Se
     sortDirection: request.sortDirection,
     hasMore,
     truncated,
-    resultLimit: truncated ? resultLimit : undefined,
+    resultLimit: truncated ? primary.resultLimit : undefined,
   };
 }
